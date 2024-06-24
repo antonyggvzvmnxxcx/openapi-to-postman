@@ -1,6 +1,7 @@
 var expect = require('chai').expect,
   _ = require('lodash'),
-  deref = require('../../lib/deref.js');
+  deref = require('../../lib/deref.js'),
+  schemaUtils30X = require('./../../lib/30XUtils/schemaUtils30X');
 
 describe('DEREF FUNCTION TESTS ', function() {
   describe('resolveRefs Function', function () {
@@ -31,6 +32,9 @@ describe('DEREF FUNCTION TESTS ', function() {
         },
         schemaWithEmptyObject = {
           $ref: '#/components/schemas/schemaWithEmptyObject'
+        },
+        schemaWithAdditionPropRef = {
+          $ref: '#/components/schemas/schemaAdditionalProps'
         },
         componentsAndPaths = {
           components: {
@@ -88,26 +92,63 @@ describe('DEREF FUNCTION TESTS ', function() {
               },
               schemaWithEmptyObject: {
                 type: 'object'
+              },
+              schemaAdditionalProps: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: {
+                    type: 'string'
+                  }
+                },
+                additionalProperties: {
+                  type: 'object',
+                  properties: {
+                    hello: {
+                      type: 'string'
+                    }
+                  }
+                }
               }
             }
-          }
+          },
+          concreteUtils: schemaUtils30X
         },
         parameterSource = 'REQUEST',
-        output = deref.resolveRefs(schema, parameterSource, componentsAndPaths),
-        output_withdot = deref.resolveRefs(schemaWithDotInKey, parameterSource, componentsAndPaths),
-        output_customFormat = deref.resolveRefs(schemaWithCustomFormat, parameterSource, componentsAndPaths),
-        output_withAllOf = deref.resolveRefs(schemaWithAllOf, parameterSource, componentsAndPaths),
-        output_validationTypeArray = deref.resolveRefs(schemaWithTypeArray, parameterSource, componentsAndPaths,
-          {}, 'VALIDATION'),
-        output_emptyObject = deref.resolveRefs(schemaWithEmptyObject, parameterSource, componentsAndPaths);
+        // deref.resolveRefs modifies the input schema and components so cloning to keep tests independent of each other
+        output = deref.resolveRefs(schema, parameterSource, _.cloneDeep(componentsAndPaths), {}),
+        output_validation = deref.resolveRefs(schema, parameterSource, _.cloneDeep(componentsAndPaths),
+          { 'resolveFor': 'VALIDATION' }),
+        output_withdot = deref.resolveRefs(schemaWithDotInKey, parameterSource, _.cloneDeep(componentsAndPaths), {}),
+        output_customFormat = deref.resolveRefs(schemaWithCustomFormat, parameterSource,
+          _.cloneDeep(componentsAndPaths), {}),
+        output_withAllOf = deref.resolveRefs(schemaWithAllOf, parameterSource, _.cloneDeep(componentsAndPaths), {}),
+        output_validationTypeArray = deref.resolveRefs(schemaWithTypeArray, parameterSource,
+          _.cloneDeep(componentsAndPaths), { 'resolveFor': 'VALIDATION' }),
+        output_emptyObject = deref.resolveRefs(schemaWithEmptyObject, parameterSource, _.cloneDeep(componentsAndPaths),
+          {}),
+        output_additionalProps = deref.resolveRefs(schemaWithAdditionPropRef, parameterSource,
+          _.cloneDeep(componentsAndPaths), { 'resolveFor': 'VALIDATION' }),
+        output_additionalPropsOverride;
 
       expect(output).to.deep.include({ type: 'object',
         required: ['id'],
-        properties: { id: { default: '<long>', type: 'integer' } } });
+        properties: { id: { default: '<long>', format: 'int64', type: 'integer' } } });
+
+      expect(output_validation).to.deep.include({ anyOf: [
+        { type: 'object',
+          required: ['id'],
+          description: 'Schema 2',
+          properties: { id: { format: 'int64', type: 'integer' } }
+        }, {
+          type: 'object',
+          properties: { emailField: { type: 'string', format: 'email' } }
+        }
+      ] });
 
       expect(output_withdot).to.deep.include({ type: 'object',
         required: ['id'],
-        properties: { id: { default: '<long>', type: 'integer' } } });
+        properties: { id: { default: '<long>', format: 'int64', type: 'integer' } } });
 
       expect(output_customFormat).to.deep.include({ type: 'object',
         properties: { emailField: { default: '<email>', format: 'email', type: 'string' } } });
@@ -116,7 +157,7 @@ describe('DEREF FUNCTION TESTS ', function() {
         type: 'object',
         description: 'Schema 2',
         properties: {
-          id: { default: '<long>', type: 'integer' },
+          id: { default: '<long>', format: 'int64', type: 'integer' },
           test_prop: { default: '<string>', type: 'string' }
         }
       });
@@ -136,41 +177,18 @@ describe('DEREF FUNCTION TESTS ', function() {
         type: 'object'
       });
 
-      done();
-    });
+      // additionalProperties $ref should be resolved
+      expect(output_additionalProps).to.deep.include(componentsAndPaths.components.schemas.schemaAdditionalProps);
 
-    it('should populate schemaResolutionCache having key as the ref provided', function (done) {
-      var schema = {
-          $ref: '#/components/schema/request'
-        },
-        componentsAndPaths = {
-          components: {
-            schema: {
-              request: {
-                properties: {
-                  name: {
-                    type: 'string',
-                    example: 'example name'
-                  }
-                }
-              }
-            }
-          }
-        },
-        parameterSource = 'REQUEST',
-        schemaResolutionCache = {},
-        resolvedSchema = deref.resolveRefs(schema, parameterSource, componentsAndPaths, schemaResolutionCache);
-      expect(_.get(schemaResolutionCache, ['#/components/schema/request', 'schema'])).to.deep.equal(resolvedSchema);
-      expect(resolvedSchema).to.deep.equal({
-        type: 'object',
-        properties: {
-          name: {
-            type: 'string',
-            example: 'example name',
-            default: '<string>'
-          }
-        }
-      });
+      // add default to above resolved schema
+      output_additionalProps.additionalProperties.properties.hello.default = '<string>';
+
+      output_additionalPropsOverride = deref.resolveRefs(schemaWithAdditionPropRef, parameterSource,
+        _.cloneDeep(componentsAndPaths), { resolveFor: 'VALIDATION' });
+
+      // override should not affect newly resolved schema
+      expect(output_additionalPropsOverride).to.deep.include(
+        componentsAndPaths.components.schemas.schemaAdditionalProps);
       done();
     });
 
@@ -184,9 +202,6 @@ describe('DEREF FUNCTION TESTS ', function() {
         ],
         nonSupportedFormats = [
           { type: 'integer', format: 'int32' },
-          { type: 'integer', format: 'int64' },
-          { type: 'number', format: 'float' },
-          { type: 'number', format: 'double' },
           { type: 'string', format: 'byte' },
           { type: 'string', format: 'binary' },
           { type: 'string', format: 'password' },
@@ -198,7 +213,11 @@ describe('DEREF FUNCTION TESTS ', function() {
       // check for supported formats
       _.forEach(allSupportedFormats, (supportedFormat) => {
         output = deref.resolveRefs(schema, parameterSource,
-          { components: { schemas: { schemaWithFormat: { type: 'string', format: supportedFormat } } } });
+          {
+            components:
+              { schemas: { schemaWithFormat: { type: 'string', format: supportedFormat } } },
+            concreteUtils: schemaUtils30X
+          }, {});
 
         expect(output.type).to.equal('string');
         expect(output.format).to.equal(supportedFormat);
@@ -207,7 +226,10 @@ describe('DEREF FUNCTION TESTS ', function() {
       // check for not supported formats
       _.forEach(nonSupportedFormats, (nonSupportedFormat) => {
         output = deref.resolveRefs(schema, parameterSource,
-          { components: { schemas: { schemaWithFormat: nonSupportedFormat } } });
+          {
+            components: { schemas: { schemaWithFormat: nonSupportedFormat } },
+            concreteUtils: schemaUtils30X
+          }, {});
 
         expect(output.type).to.equal(nonSupportedFormat.type);
         expect(output.format).to.be.undefined;
@@ -225,126 +247,247 @@ describe('DEREF FUNCTION TESTS ', function() {
         parameterSource = 'REQUEST',
         output;
 
-      output = deref.resolveRefs(schema, parameterSource, {});
+      output = deref.resolveRefs(schema, parameterSource, { concreteUtils: schemaUtils30X }, {});
       expect(output.type).to.equal('string');
       expect(output.format).to.be.undefined;
       expect(output.pattern).to.eql(schema.pattern);
       done();
     });
 
-    it('should correctly resolve schema from schemaResoltionCache based on schema resolution level', function (done) {
-      let schema = {
-          $ref: '#/components/schemas/schemaUsed'
-        },
-        consumerSchema = {
+    it('should not contain readOnly properties in resolved schema if they are not contained' +
+      ' in resolved schema', function(done) {
+      var schema = {
           type: 'object',
-          properties: { level2: {
-            type: 'object',
-            properties: { level3: {
-              type: 'object',
-              properties: { level4: {
-                type: 'object',
-                properties: { level5: {
-                  type: 'object',
-                  properties: { level6: {
-                    type: 'object',
-                    properties: { level7: {
-                      type: 'object',
-                      properties: { level8: {
-                        type: 'object',
-                        properties: { level9: { $ref: '#/components/schemas/schemaUsed' } }
-                      } }
-                    } }
-                  } }
-                } }
-              } }
-            } }
-          } }
+          required: ['id', 'name'],
+          properties: {
+            id: {
+              type: 'integer',
+              format: 'int64',
+              readOnly: true
+            },
+            name: {
+              type: 'string'
+            },
+            tag: {
+              type: 'string',
+              writeOnly: true
+            }
+          }
+        },
+        parameterSource = 'REQUEST',
+        output;
+
+      output = deref.resolveRefs(schema, parameterSource, { concreteUtils: schemaUtils30X }, {});
+      expect(output.type).to.equal('object');
+      expect(output.properties).to.not.haveOwnProperty('id');
+      expect(output.required).to.not.include('id');
+      done();
+    });
+
+    it('should not contain writeOnly properties in resolved schema if they are not contained' +
+      ' in resolved schema', function(done) {
+      var schema = {
+          type: 'object',
+          required: ['id', 'tag'],
+          properties: {
+            id: {
+              type: 'integer',
+              format: 'int64',
+              readOnly: true
+            },
+            name: {
+              type: 'string'
+            },
+            tag: {
+              type: 'string',
+              writeOnly: true
+            }
+          }
+        },
+        parameterSource = 'RESPONSE',
+        output;
+
+      output = deref.resolveRefs(schema, parameterSource, { concreteUtils: schemaUtils30X }, {});
+      expect(output.type).to.equal('object');
+      expect(output.properties).to.not.haveOwnProperty('tag');
+      expect(output.required).to.not.include('tag');
+      done();
+    });
+
+    it('should handle schema with enum having no type defined for resolveTo set as schema', function(done) {
+      var schema = {
+          'enum': [
+            'capsule',
+            'probe',
+            'satellite',
+            'spaceplane',
+            'station'
+          ]
+        },
+        resolveFor = 'CONVERSION',
+        resolveTo = 'schema',
+        parameterSource = 'REQUEST',
+        output;
+
+      output = deref.resolveRefs(schema, parameterSource, { concreteUtils: schemaUtils30X }, {
+        resolveFor,
+        resolveTo
+      });
+      expect(output.type).to.equal('string');
+      expect(output.default).to.equal('<string>');
+      done();
+    });
+
+    it('should return schema with example parameter(if given) for $ref just like inline schema', function(done) {
+      var schema = {
+          $ref: '#/components/schemas/schema1',
+          example: 'asc'
         },
         componentsAndPaths = {
           components: {
             schemas: {
-              schemaUsed: {
-                'type': 'object',
-                'required': [
-                  'id',
-                  'name'
+              schema1: {
+                description: 'The unique identifier of a spacecraft',
+                enum: [
+                  'asc',
+                  'desc'
                 ],
-                'properties': {
-                  'id': {
-                    'type': 'integer',
-                    'format': 'int64'
-                  },
-                  'name': {
-                    'type': 'string'
-                  },
-                  'tag': {
-                    'type': 'string'
-                  }
-                }
+                type: 'string'
               }
             }
           }
         },
         parameterSource = 'REQUEST',
-        schemaResoltionCache = {},
-        resolvedConsumerSchema,
-        resolvedSchema;
+        // deref.resolveRefs modifies the input schema and components so cloning to keep tests independent of each other
+        output = deref.resolveRefs(schema, parameterSource, _.cloneDeep(componentsAndPaths), {});
 
-      resolvedConsumerSchema = deref.resolveRefs(consumerSchema, parameterSource, componentsAndPaths,
-        schemaResoltionCache);
-
-      // Consumer schema contains schema at nesting level 9, which results in impartial resolution of schema
-      expect(_.get(schemaResoltionCache, ['#/components/schemas/schemaUsed', 'resLevel'])).to.eql(9);
-      expect(_.get(resolvedConsumerSchema, _.join(_.map(_.range(1, 10), (ele) => {
-        return `properties.level${ele}`;
-      }), '.'))).to.not.deep.equal(componentsAndPaths.components.schemas.schemaUsed);
-      expect(_.get(schemaResoltionCache, ['#/components/schemas/schemaUsed', 'schema'])).to.not.deep
-        .equal(componentsAndPaths.components.schemas.schemaUsed);
-      resolvedSchema = deref.resolveRefs(schema, parameterSource, componentsAndPaths, schemaResoltionCache);
-
-      /**
-       * Even though schema cache contains schemaUsed as impartially cached,resolution were it's used again will
-       * depend on ongoing resolution level and schema is cached again if it's updated.
-       */
-      expect(resolvedSchema).to.deep.equal(componentsAndPaths.components.schemas.schemaUsed);
-      expect(_.get(schemaResoltionCache, ['#/components/schemas/schemaUsed', 'schema'])).to.deep
-        .equal(componentsAndPaths.components.schemas.schemaUsed);
+      expect(output.example).to.equal(schema.example);
       done();
     });
   });
 
   describe('resolveAllOf Function', function () {
-    it('should resolve allOf schemas correctly', function (done) {
-      var allOfschema = [
-        {
-          'type': 'object',
-          'properties': {
-            'source': {
-              'type': 'string',
-              'format': 'uuid'
+    it('should resolve schemas containing allOf keyword correctly', function (done) {
+      var schema = {
+        'allOf': [
+          {
+            'type': 'object',
+            'properties': {
+              'source': {
+                'type': 'string',
+                'format': 'uuid'
+              },
+              'actionId': { 'type': 'integer', 'minimum': 5 },
+              'result': { 'type': 'object' }
             },
-            'actionId': { 'type': 'integer', 'minimum': 5 },
-            'result': { 'type': 'object' }
+            'required': ['source', 'actionId', 'result']
           },
-          'required': ['source', 'actionId', 'result']
-        },
-        {
-          'properties': {
-            'result': {
-              'type': 'object',
-              'properties': {
-                'err': { 'type': 'string' },
-                'data': { 'type': 'object' }
+          {
+            'properties': {
+              'result': {
+                'type': 'object',
+                'properties': {
+                  'err': { 'type': 'string' },
+                  'data': { 'type': 'object' }
+                }
               }
             }
           }
-        }
-      ];
+        ]
+      };
 
-      expect(deref.resolveAllOf(allOfschema, 'REQUEST', {}, {}, null, 'example')).to.deep.include({
+      expect(deref.resolveAllOf(
+        schema,
+        'REQUEST',
+        { concreteUtils: schemaUtils30X },
+        { resolveTo: 'example' }
+      )).to.deep.include({
         type: 'object',
         properties: {
+          source: {
+            type: 'string',
+            format: 'uuid'
+          },
+          actionId: { 'type': 'integer', 'minimum': 5 },
+          result: {
+            type: 'object',
+            properties: {
+              err: { 'type': 'string' },
+              data: { 'type': 'object' }
+            }
+          }
+        }
+      });
+      done();
+    });
+
+    it('should resolve schemas containing allOf keyword along with outer properties correctly', function (done) {
+      var schema = {
+        'properties': {
+          'id': {
+            'type': 'integer'
+          },
+          'name': {
+            'type': 'string'
+          },
+          'type': {
+            'type': 'string',
+            'enum': ['capsule', 'probe', 'satellite', 'spaceplane', 'station']
+          },
+          'registerdDate': {
+            'type': 'string',
+            'format': 'date-time'
+          }
+        },
+        'allOf': [
+          {
+            'type': 'object',
+            'properties': {
+              'source': {
+                'type': 'string',
+                'format': 'uuid'
+              },
+              'actionId': { 'type': 'integer', 'minimum': 5 },
+              'result': { 'type': 'object' }
+            },
+            'required': ['source', 'actionId', 'result']
+          },
+          {
+            'properties': {
+              'result': {
+                'type': 'object',
+                'properties': {
+                  'err': { 'type': 'string' },
+                  'data': { 'type': 'object' }
+                }
+              }
+            }
+          }
+        ]
+      };
+
+      expect(deref.resolveAllOf(
+        schema,
+        'REQUEST',
+        { concreteUtils: schemaUtils30X },
+        { resolveTo: 'example' }
+      )).to.deep.include({
+        type: 'object',
+        properties: {
+          id: {
+            type: 'integer'
+          },
+          name: {
+            type: 'string'
+          },
+          type: {
+            type: 'string',
+            enum: ['capsule', 'probe', 'satellite', 'spaceplane', 'station']
+          },
+          registerdDate: {
+            type: 'string',
+            format: 'date-time'
+          },
           source: {
             type: 'string',
             format: 'uuid'

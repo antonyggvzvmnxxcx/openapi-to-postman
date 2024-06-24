@@ -11,7 +11,12 @@
  */
 
 var _ = require('lodash'),
-  validateSchema = require('../lib/ajvValidation').validateSchema;
+  validateSchema = require('../lib/ajValidation/ajvValidation').validateSchema,
+  {
+    handleExclusiveMaximum,
+    handleExclusiveMinimum
+  } = require('./../lib/common/schemaUtilsCommon'),
+  hash = require('object-hash');
 
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
@@ -23463,8 +23468,16 @@ function extend() {
           var context = {};
           while (length--) {
               var fn = keys[length].replace(/^x-/, '');
-              var gen = this.support[fn];
+
+              /**
+               * CHANGE: This Makes sure that we're not using Object's prototype properties,
+               * while accessing certain keys like 'constructor'
+               */
+              var gen = this.support.hasOwnProperty(fn) && this.support[fn];
               if (typeof gen === 'function') {
+                if (typeof schema[fn] === 'object' && schema[fn].hasOwnProperty('type')) {
+                  continue;
+                }
                   Object.defineProperty(schema, 'generate', {
                       configurable: false,
                       enumerable: false,
@@ -23564,6 +23577,7 @@ function extend() {
               data['failOnInvalidTypes'] = true;
               data['failOnInvalidFormat'] = true;
               data['alwaysFakeOptionals'] = false;
+              data['fixedProbabilities'] = true;
               data['optionalsProbability'] = 0.0;
               data['useDefaultValue'] = false;
               data['useExamplesValue'] = false;
@@ -23571,6 +23585,8 @@ function extend() {
               data['requiredOnly'] = false;
               data['minItems'] = 0;
               data['maxItems'] = null;
+              data['defaultMinItems'] = 2;
+              data['defaultMaxItems'] = 2;
               data['maxLength'] = null;
               data['resolveJsonPath'] = false;
               data['reuseProperties'] = false;
@@ -23773,12 +23789,8 @@ function extend() {
               if (schema.enum) {
                   var min = Math.max(params.minimum || 0, 0);
                   var max = Math.min(params.maximum || Infinity, Infinity);
-                  if (schema.exclusiveMinimum && min === schema.minimum) {
-                      min += schema.multipleOf || 1;
-                  }
-                  if (schema.exclusiveMaximum && max === schema.maximum) {
-                      max -= schema.multipleOf || 1;
-                  }
+                  min = handleExclusiveMinimum(schema, min);
+                  max = handleExclusiveMaximum(schema, max);
                   // discard out-of-bounds enumerations
                   schema.enum = schema.enum.filter(function (x) {
                       if (x >= min && x <= max) {
@@ -23809,6 +23821,14 @@ function extend() {
       }
       // execute generator
       var value = callback(params);
+
+      /**
+       * CHANGE: This Makes sure that we're not typecasting null to "null"
+       */
+      if (_.get(schema, 'nullable') && value === null) {
+        return value;
+      }
+
       // normalize output value
       switch (schema.type) {
           case 'number':
@@ -23825,7 +23845,13 @@ function extend() {
               var min = Math.max(params.minLength || 0, 0);
               var max = Math.min(params.maxLength || Infinity, Infinity);
               while (value.length < min) {
-                  value += ' ' + value;
+                  /**
+                   * CHANGE: This Makes sure that we're not adding extra spaces in generated value,
+                   * As such behaviour generates invalid data when pattern is mentioned.
+                   *
+                   * To avoid infinite loop, make sure we keep adding spaces in cases where value is empty string
+                   */
+                  value += ((schema.pattern && value.length !== 0) ? '' : ' ') + value;
               }
               if (value.length > max) {
                   value = value.substr(0, max);
@@ -24096,7 +24122,7 @@ function extend() {
   var nullType = nullGenerator;
 
   // TODO provide types
-  function unique(path, items, value, sample, resolve, traverseCallback) {
+  function unique(path, items, value, sample, resolve, traverseCallback, seenSchemaCache) {
       var tmp = [], seen = [];
       function walk(obj) {
           var json = JSON.stringify(obj);
@@ -24109,7 +24135,7 @@ function extend() {
       // TODO: find a better solution?
       var limit = 10;
       while (tmp.length !== items.length) {
-          walk(traverseCallback(value.items || sample, path, resolve));
+          walk(traverseCallback(value.items || sample, path, resolve, null, seenSchemaCache));
           if (!limit--) {
               break;
           }
@@ -24117,7 +24143,7 @@ function extend() {
       return tmp;
   }
   // TODO provide types
-  var arrayType = function arrayType(value, path, resolve, traverseCallback) {
+  var arrayType = function arrayType(value, path, resolve, traverseCallback, seenSchemaCache) {
       var items = [];
       if (!(value.items || value.additionalItems)) {
           if (utils.hasProperties(value, 'minItems', 'maxItems', 'uniqueItems')) {
@@ -24132,11 +24158,30 @@ function extend() {
       if (tmpItems instanceof Array) {
           return Array.prototype.concat.call(items, tmpItems.map(function (item, key) {
               var itemSubpath = path.concat(['items', key + '']);
-              return traverseCallback(item, itemSubpath, resolve);
+              return traverseCallback(item, itemSubpath, resolve, null, seenSchemaCache);
           }));
       }
       var minItems = value.minItems;
       var maxItems = value.maxItems;
+
+      /**
+       * Json schema faker fakes exactly maxItems # of elements in array if present.
+       * Hence we're keeping maxItems as minimum and valid as possible for schema faking (to lessen faked items)
+       * Maximum allowed maxItems is set to 20, set by Json schema faker option.
+       */
+      // Override minItems to defaultMinItems if no minItems present
+      if (typeof minItems !== 'number' && maxItems && maxItems >= optionAPI('defaultMinItems')) {
+        minItems = optionAPI('defaultMinItems');
+      }
+
+      // Override maxItems to minItems if minItems is available
+      if (typeof minItems === 'number' && minItems > 0) {
+        maxItems = minItems;
+      }
+
+      // If no maxItems is defined than override with defaultMaxItems
+      typeof maxItems !== 'number' && (maxItems = optionAPI('defaultMaxItems'));
+
       if (optionAPI('minItems') && minItems === undefined) {
           // fix boundaries
           minItems = !maxItems
@@ -24161,11 +24206,18 @@ function extend() {
       sample = typeof value.additionalItems === 'object' ? value.additionalItems : {};
       for (var current = items.length; current < length; current++) {
           var itemSubpath = path.concat(['items', current + '']);
-          var element = traverseCallback(value.items || sample, itemSubpath, resolve);
+          var element = traverseCallback(value.items || sample, itemSubpath, resolve, null, seenSchemaCache);
           items.push(element);
       }
-      if (value.uniqueItems) {
-          return unique(path.concat(['items']), items, value, sample, resolve, traverseCallback);
+
+      /**
+       * Below condition puts more computation load to check unique data across multiple items by
+       * traversing through all data and making sure it's unique.
+       * As such only apply unique constraint when parameter resolution is set to "example".
+       * As in other case, i.e. "schema", generated value for will be same anyways.
+       */
+      if (value.uniqueItems && optionAPI('useExamplesValue')) {
+          return unique(path.concat(['items']), items, value, sample, resolve, traverseCallback, seenSchemaCache);
       }
       return items;
   };
@@ -24176,12 +24228,8 @@ function extend() {
           max = Math.floor(max / multipleOf) * multipleOf;
           min = Math.ceil(min / multipleOf) * multipleOf;
       }
-      if (value.exclusiveMinimum && min === value.minimum) {
-          min += multipleOf || 1;
-      }
-      if (value.exclusiveMaximum && max === value.maximum) {
-          max -= multipleOf || 1;
-      }
+      min = handleExclusiveMinimum(value, min);
+      max = handleExclusiveMaximum(value, max);
       if (min > max) {
           return NaN;
       }
@@ -24232,139 +24280,253 @@ function extend() {
   // fallback generator
   var anyType = { type: ['string', 'number', 'integer', 'boolean'] };
   // TODO provide types
-  var objectType = function objectType(value, path, resolve, traverseCallback) {
-      var props = {};
-      var properties = value.properties || {};
-      var patternProperties = value.patternProperties || {};
-      var requiredProperties = (value.required || []).slice();
-      var allowsAdditional = value.additionalProperties === false ? false : true;
-      var propertyKeys = Object.keys(properties);
-      var patternPropertyKeys = Object.keys(patternProperties);
-      var optionalProperties = propertyKeys.concat(patternPropertyKeys).reduce(function (_response, _key) {
-          if (requiredProperties.indexOf(_key) === -1)
-              _response.push(_key);
-          return _response;
-      }, []);
-      var allProperties = requiredProperties.concat(optionalProperties);
-      var additionalProperties = allowsAdditional
-          ? (value.additionalProperties === true ? {} : value.additionalProperties)
-          : null;
-      if (!allowsAdditional &&
-          propertyKeys.length === 0 &&
-          patternPropertyKeys.length === 0 &&
-          utils.hasProperties(value, 'minProperties', 'maxProperties', 'dependencies', 'required')) {
-          // just nothing
-          return {};
-      }
-      if (optionAPI('requiredOnly') === true) {
-          requiredProperties.forEach(function (key) {
-              if (properties[key]) {
-                  props[key] = properties[key];
-              }
-          });
-          return traverseCallback(props, path.concat(['properties']), resolve);
-      }
-      var optionalsProbability = optionAPI('alwaysFakeOptionals') === true ? 1.0 : optionAPI('optionalsProbability');
-      var ignoreProperties = optionAPI('ignoreProperties') || [];
-      var min = Math.max(value.minProperties || 0, requiredProperties.length);
-      var max = Math.max(value.maxProperties || allProperties.length);
-      var neededExtras = Math.round((min - requiredProperties.length) + optionalsProbability * (max - min));
-      var extraPropertiesRandomOrder = random.shuffle(optionalProperties).slice(0, neededExtras);
-      var extraProperties = optionalProperties.filter(function (_item) {
-          return extraPropertiesRandomOrder.indexOf(_item) !== -1;
+  // Updated objectType definition to latest version (0.5.0-rcv.41)
+  var objectType = function objectType(value, path, resolve, traverseCallback, seenSchemaCache) {
+    const props = {};
+
+    const properties = value.properties || {};
+    const patternProperties = value.patternProperties || {};
+    const requiredProperties = (!Array.isArray(value.required)) ? [] : (value.required || []).slice();
+    const allowsAdditional = value.additionalProperties !== false;
+
+    const propertyKeys = Object.keys(properties);
+    const patternPropertyKeys = Object.keys(patternProperties);
+    const optionalProperties = propertyKeys.concat(patternPropertyKeys).reduce((_response, _key) => {
+      if (requiredProperties.indexOf(_key) === -1) _response.push(_key);
+      return _response;
+    }, []);
+    const allProperties = requiredProperties.concat(optionalProperties);
+
+    const additionalProperties = allowsAdditional // eslint-disable-line
+      ? (value.additionalProperties === true ? anyType : value.additionalProperties)
+      : value.additionalProperties;
+
+    if (!allowsAdditional
+      && propertyKeys.length === 0
+      && patternPropertyKeys.length === 0
+      && utils.hasProperties(value, 'minProperties', 'maxProperties', 'dependencies', 'required')
+    ) {
+      // just nothing
+      return null;
+    }
+
+    if (optionAPI('requiredOnly') === true) {
+      requiredProperties.forEach(key => {
+        if (properties[key]) {
+          props[key] = properties[key];
+        }
       });
-      // properties are read from right-to-left
-      var _props = requiredProperties.concat(extraProperties).slice(0, max);
-      var skipped = [];
-      var missing = [];
-      _props.forEach(function (key) {
-          for (var i = 0; i < ignoreProperties.length; i += 1) {
-              if ((ignoreProperties[i] instanceof RegExp && ignoreProperties[i].test(key))
-                  || (typeof ignoreProperties[i] === 'string' && ignoreProperties[i] === key)
-                  || (typeof ignoreProperties[i] === 'function' && ignoreProperties[i](properties[key], key))) {
-                  skipped.push(key);
-                  return;
+
+      return traverseCallback(props, path.concat(['properties']), resolve, value, seenSchemaCache);
+    }
+
+    const optionalsProbability = optionAPI('alwaysFakeOptionals') === true ? 1.0 : optionAPI('optionalsProbability');
+    const fixedProbabilities = optionAPI('alwaysFakeOptionals') || optionAPI('fixedProbabilities') || false;
+    const ignoreProperties = optionAPI('ignoreProperties') || [];
+    const reuseProps = optionAPI('reuseProperties');
+    const fillProps = optionAPI('fillProperties');
+
+    const max = value.maxProperties || (allProperties.length + (allowsAdditional ? random.number(1, 5) : 0));
+
+    let min = Math.max(value.minProperties || 0, requiredProperties.length);
+    let neededExtras = Math.max(0, allProperties.length - min);
+
+    if (optionalsProbability !== null) {
+      if (fixedProbabilities === true) {
+        neededExtras = Math.round((min - requiredProperties.length) + (optionalsProbability * (allProperties.length - min)));
+      } else {
+        neededExtras = random.number(min - requiredProperties.length, optionalsProbability * (allProperties.length - min));
+      }
+    }
+
+    const extraPropertiesRandomOrder = random.shuffle(optionalProperties).slice(0, neededExtras);
+    const extraProperties = optionalProperties.filter(_item => {
+      return extraPropertiesRandomOrder.indexOf(_item) !== -1;
+    });
+
+    // properties are read from right-to-left
+    const _limit = optionalsProbability !== null || requiredProperties.length === max ? max : random.number(0, max);
+    const _props = requiredProperties.concat(extraProperties).slice(0, max);
+    const _defns = [];
+
+    if (value.dependencies) {
+      Object.keys(value.dependencies).forEach(prop => {
+        const _required = value.dependencies[prop];
+
+        if (_props.indexOf(prop) !== -1) {
+          if (Array.isArray(_required)) {
+            // property-dependencies
+            _required.forEach(sub => {
+              if (_props.indexOf(sub) === -1) {
+                _props.push(sub);
               }
+            });
+          } else {
+            _defns.push(_required);
           }
-          // first ones are the required properies
-          if (properties[key]) {
-              props[key] = properties[key];
-          }
-          else {
-              var found;
-              // then try patternProperties
-              patternPropertyKeys.forEach(function (_key) {
-                  if (key.match(new RegExp(_key))) {
-                      found = true;
-                      props[random.randexp(key)] = patternProperties[_key];
-                  }
-              });
-              if (!found) {
-                  // try patternProperties again,
-                  var subschema = patternProperties[key] || additionalProperties;
-                  // FIXME: allow anyType as fallback when no subschema is given?
-                  if (subschema) {
-                      // otherwise we can use additionalProperties?
-                      props[patternProperties[key] ? random.randexp(key) : key] = subschema;
-                  }
-                  else {
-                      missing.push(key);
-                  }
-              }
-          }
+        }
       });
-      var fillProps = optionAPI('fillProperties');
-      var reuseProps = optionAPI('reuseProperties');
-      // discard already ignored props if they're not required to be filled...
-      var current = Object.keys(props).length + (fillProps ? 0 : skipped.length);
-      while (fillProps) {
-          if (!(patternPropertyKeys.length || allowsAdditional)) {
-              break;
-          }
-          if (current >= min) {
-              break;
-          }
-          if (allowsAdditional) {
-              if (reuseProps && ((propertyKeys.length - current) > min)) {
-                  var count = 0;
-                  do {
-                      count += 1;
-                      // skip large objects
-                      if (count > 1000) {
-                          break;
-                      }
-                      var key = random.pick(propertyKeys);
-                  } while (typeof props[key] !== 'undefined');
-                  if (typeof props[key] === 'undefined') {
-                      props[key] = properties[key];
-                      current += 1;
-                  }
-              }
-              else {
-                  var word = wordsGenerator(1) + random.randexp('[a-f\\d]{1,3}');
-                  if (!props[word]) {
-                      props[word] = additionalProperties || anyType;
-                      current += 1;
-                  }
-              }
-          }
-          patternPropertyKeys.forEach(function (_key) {
-              var word = random.randexp(_key);
-              if (!props[word]) {
-                  props[word] = patternProperties[_key];
-                  current += 1;
-              }
-          });
+
+      // schema-dependencies
+      if (_defns.length) {
+        delete value.dependencies;
+
+        return traverseCallback({
+          allOf: _defns.concat(value),
+        }, path.concat(['properties']), resolve, value, seenSchemaCache);
       }
-      if (!allowsAdditional && current < min) {
-          if (missing.length) {
-              throw new ParseError('properties "' + missing.join(', ') + '" were not found while additionalProperties is false:\n' +
-                  utils.short(value), path);
-          }
-          throw new ParseError('properties constraints were too strong to successfully generate a valid object for:\n' +
-              utils.short(value), path);
+    }
+
+    const skipped = [];
+    const missing = [];
+
+    _props.forEach(key => {
+      for (let i = 0; i < ignoreProperties.length; i += 1) {
+        if ((ignoreProperties[i] instanceof RegExp && ignoreProperties[i].test(key))
+          || (typeof ignoreProperties[i] === 'string' && ignoreProperties[i] === key)
+          || (typeof ignoreProperties[i] === 'function' && ignoreProperties[i](properties[key], key))) {
+          skipped.push(key);
+          return;
+        }
       }
-      return traverseCallback(props, path.concat(['properties']), resolve);
+
+      if (additionalProperties === false) {
+        if (requiredProperties.indexOf(key) !== -1) {
+          props[key] = properties[key];
+        }
+      }
+
+      if (properties[key]) {
+        props[key] = properties[key];
+      }
+
+      let found;
+
+      // then try patternProperties
+      patternPropertyKeys.forEach(_key => {
+        if (key.match(new RegExp(_key))) {
+          found = true;
+
+          if (props[key]) {
+            utils.merge(props[key], patternProperties[_key]);
+          } else {
+            props[random.randexp(key)] = patternProperties[_key];
+          }
+        }
+      });
+
+      if (!found) {
+        // try patternProperties again,
+        const subschema = patternProperties[key] || additionalProperties;
+
+        // FIXME: allow anyType as fallback when no subschema is given?
+
+        if (subschema && additionalProperties !== false) {
+          // otherwise we can use additionalProperties?
+          props[patternProperties[key] ? random.randexp(key) : key] = properties[key] || subschema;
+        } else {
+          missing.push(key);
+        }
+      }
+    });
+
+    // discard already ignored props if they're not required to be filled...
+    let current = Object.keys(props).length + (fillProps ? 0 : skipped.length);
+
+    // generate dynamic suffix for additional props...
+    const hash = suffix => random.randexp(`_?[_a-f\\d]{1,3}${suffix ? '\\$?' : ''}`);
+
+    function get(from) {
+      let one;
+
+      do {
+        if (!from.length) break;
+        one = from.shift();
+      } while (props[one]);
+
+      return one;
+    }
+
+    let minProps = min;
+    if (allowsAdditional && !requiredProperties.length) {
+      minProps = Math.max(optionalsProbability === null || additionalProperties ? random.number(fillProps ? 1 : 0, max) : 0, min);
+    }
+
+    while (fillProps) {
+      if (!(patternPropertyKeys.length || allowsAdditional)) {
+        break;
+      }
+
+      if (current >= minProps) {
+        break;
+      }
+
+      if (allowsAdditional) {
+        if (reuseProps && ((propertyKeys.length - current) > minProps)) {
+          let count = 0;
+          let key;
+
+          do {
+            count += 1;
+
+            // skip large objects
+            if (count > 1000) {
+              break;
+            }
+
+            key = get(requiredProperties) || random.pick(propertyKeys);
+          } while (typeof props[key] !== 'undefined');
+
+          if (typeof props[key] === 'undefined') {
+            props[key] = properties[key];
+            current += 1;
+          }
+        } else if (patternPropertyKeys.length && !additionalProperties) {
+          const prop = random.pick(patternPropertyKeys);
+          const word = random.randexp(prop);
+
+          if (!props[word]) {
+            props[word] = patternProperties[prop];
+            current += 1;
+          }
+        } else {
+          const word = get(requiredProperties) || (wordsGenerator(1) + hash());
+
+          if (!props[word]) {
+            props[word] = additionalProperties || anyType;
+            current += 1;
+          }
+        }
+      }
+
+      for (let i = 0; current < min && i < patternPropertyKeys.length; i += 1) {
+        const _key = patternPropertyKeys[i];
+        const word = random.randexp(_key);
+
+
+        if (!props[word]) {
+          props[word] = patternProperties[_key];
+          current += 1;
+        }
+      }
+    }
+
+    // fill up-to this value and no more!
+    if (requiredProperties.length === 0 && (!allowsAdditional || optionalsProbability === false)) {
+      const maximum = random.number(min, max);
+
+      for (; current < maximum;) {
+        const word = get(propertyKeys);
+
+        if (word) {
+          props[word] = properties[word];
+        }
+
+        current += 1;
+      }
+    }
+
+    return traverseCallback(props, path.concat(['properties']), resolve, value, seenSchemaCache);
   };
 
   /**
@@ -24453,12 +24615,16 @@ function extend() {
       ipv6: '[a-f\\d]{4}(:[a-f\\d]{4}){7}',
       uri: URI_PATTERN,
       slug: '[a-zA-Z\\d_-]+',
-    
+
       // types from draft-0[67] (?)
       'uri-reference': `${URI_PATTERN}${PARAM_PATTERN}`,
-      'uri-template': URI_PATTERN.replace('(?:', '(?:/\\{[a-z][:a-zA-Z0-9-]*\\}|'),
+      /**
+       * CHANGE: Corrected uri-template format to be inline with RFC-6570
+       * https://www.rfc-editor.org/rfc/rfc6570#section-2
+       */
+      'uri-template': URI_PATTERN.replace('(?:', '(?:/\\{[a-z][a-zA-Z0-9]*\\}|'),
       'json-pointer': `(/(?:${FRAGMENT.replace(']*', '/]*')}|~[01]))+`,
-    
+
       // some types from https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.1.md#data-types (?)
       uuid: '^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$',
   };
@@ -24550,31 +24716,42 @@ function extend() {
   };
 
   // TODO provide types
-  function traverse(schema, path, resolve, rootSchema) {
+  function traverse(schema, path, resolve, rootSchema, seenSchemaCache) {
       schema = resolve(schema);
       if (!schema) {
-          return;
+        return;
       }
       if (optionAPI('useExamplesValue') && 'example' in schema) {
         var clonedSchema,
-          result;
+          result,
+          isExampleValid,
+          hashSchema = hash(schema);
 
-        // avoid minItems and maxItems while checking for valid examples
-        if (optionAPI('avoidExampleItemsLength') && _.get(schema, 'type') === 'array') {
-          clonedSchema = _.clone(schema);
-          _.unset(clonedSchema, 'minItems');
-          _.unset(clonedSchema, 'maxItems');
-
-          // avoid validation of values that are in pm variable format (i.e. '{{userId}}')
-          result = validateSchema(clonedSchema, schema.example, { ignoreUnresolvedVariables: true });
+        if(seenSchemaCache && seenSchemaCache.has(hashSchema)) {
+          isExampleValid = seenSchemaCache.get(hashSchema);
         }
         else {
-          // avoid validation of values that are in pm variable format (i.e. '{{userId}}')
-          result = validateSchema(schema, schema.example, { ignoreUnresolvedVariables: true });
+          // avoid minItems and maxItems while checking for valid examples
+          if (optionAPI('avoidExampleItemsLength') && _.get(schema, 'type') === 'array') {
+            clonedSchema = _.clone(schema);
+            _.unset(clonedSchema, 'minItems');
+            _.unset(clonedSchema, 'maxItems');
+
+            // avoid validation of values that are in pm variable format (i.e. '{{userId}}')
+            result = validateSchema(clonedSchema, schema.example, { ignoreUnresolvedVariables: true });
+          }
+          else {
+            // avoid validation of values that are in pm variable format (i.e. '{{userId}}')
+            result = validateSchema(schema, schema.example, { ignoreUnresolvedVariables: true });
+          }
+
+          // Store the final result that needs to be used in the seen map
+          isExampleValid = result && result.length === 0;
+          seenSchemaCache && seenSchemaCache.set(hashSchema, isExampleValid);
         }
 
-        // Use example only if valid 
-        if (result && result.length === 0) {
+        // Use example only if valid
+        if (isExampleValid) {
           return schema.example;
         }
       }
@@ -24582,7 +24759,7 @@ function extend() {
       if (optionAPI('useDefaultValue') && 'default' in schema) {
         // to not use default as faked value in case it is actual property of schema
         if (!(_.has(schema.default, 'type') && _.includes(ALL_TYPES, schema.default.type))) {
-          return schema.default; 
+          return schema.default;
         }
       }
       if (schema.not && typeof schema.not === 'object') {
@@ -24593,7 +24770,7 @@ function extend() {
       }
       // thunks can return sub-schemas
       if (typeof schema.thunk === 'function') {
-          return traverse(schema.thunk(), path, resolve);
+          return traverse(schema.thunk(), path, resolve, null, seenSchemaCache);
       }
       if (typeof schema.generate === 'function') {
           return utils.typecast(schema, function () { return schema.generate(rootSchema); });
@@ -24621,7 +24798,7 @@ function extend() {
           }
           else {
               try {
-                  var result = typeMap[type](schema, path, resolve, traverse);
+                  var result = typeMap[type](schema, path, resolve, traverse, seenSchemaCache);
                   var required = schema.items
                       ? schema.items.required
                       : schema.required;
@@ -24641,7 +24818,7 @@ function extend() {
       }
       for (var prop in schema) {
           if (typeof schema[prop] === 'object' && prop !== 'definitions') {
-              copy[prop] = traverse(schema[prop], path.concat([prop]), resolve, copy);
+              copy[prop] = traverse(schema[prop], path.concat([prop]), resolve, copy, seenSchemaCache);
           }
           else {
               copy[prop] = schema[prop];
@@ -24711,7 +24888,7 @@ function extend() {
       return obj;
   }
   // TODO provide types
-  function run(refs, schema, container) {
+  function run(refs, schema, container, seenSchemaCache) {
       try {
           var result = traverse(schema, [], function reduce(sub, maxReduceDepth) {
               if (typeof maxReduceDepth === 'undefined') {
@@ -24780,7 +24957,7 @@ function extend() {
                   }
               }
               return container.wrap(sub);
-          });
+          }, null, seenSchemaCache);
           if (optionAPI('resolveJsonPath')) {
               return resolve(result);
           }
@@ -24822,7 +24999,7 @@ function extend() {
           }
       }
   }
-  var jsf = function (schema, refs) {
+  var jsf = function (schema, refs, seenSchemaCache) {
       var ignore = optionAPI('ignoreMissingRefs');
       var $ = deref(function (id, refs) {
           // FIXME: allow custom callback?
@@ -24831,7 +25008,7 @@ function extend() {
           }
       });
       var $refs = getRefs(refs);
-      return run($refs, $(schema, $refs, true), container);
+      return run($refs, $(schema, $refs, true), container, seenSchemaCache);
   };
   jsf.resolve = function (schema, refs, cwd) {
       if (typeof refs === 'string') {
