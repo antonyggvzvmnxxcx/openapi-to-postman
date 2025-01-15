@@ -1,0 +1,52 @@
+openapi: 3.0.3
+info:
+  title: My API
+  version: 1.0.0
+  contact: {}
+servers:
+  - url: "https://api.server.test/v1"
+paths:
+  /test:
+    post:
+      summary: /test
+      description: /test
+      operationId: test
+      requestBody:
+        content:
+          text/xml:
+            schema:
+              type: object
+              properties:
+                'xmlns:soap':
+                  type: string
+                  xml:
+                    attribute: true
+                  example: http://schemas.xmlsoap.org/soap/envelope
+                body:
+                  type: object
+                  properties:
+                    NumberToWords:
+                      type: object
+                      properties:
+                        xmlns:
+                          type: string
+                          xml:
+                            attribute: true
+                          example: http://www.dataaccess.com/webservicesserver
+                        ubiNum:
+                          type: integer
+                          example: 500
+                  xml:
+                    name: soap:Body
+              xml:
+                name: soap:Envelope
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              examples:
+                OK:
+                  value: 
+                    Data: Postman
+tags: []

@@ -6,7 +6,8 @@ var expect = require('chai').expect,
   crypto = require('crypto'),
   hash = (input) => {
     return crypto.createHash('sha1').update(input).digest('base64');
-  };
+  },
+  concreteUtils = require('./../../lib/30XUtils/schemaUtils30X');
 
 /* Utility function Unit tests */
 describe('UTILITY FUNCTION TESTS', function() {
@@ -67,9 +68,15 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         },
         parameterSource = 'REQUEST',
         resolveTo = 'schema',
-        resolveFor = 'CONVERSION';
+        resolveFor = 'CONVERSION',
+        options = {
+          indentCharacter: '  ',
+          stackLimit: 10,
+          includeDeprecated: true
+        };
 
-      expect(SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource, { components }))
+      expect(SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource, { components, concreteUtils },
+        '', undefined, options))
         .to.equal('<string>');
       done();
     });
@@ -99,8 +106,22 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         parameterSource = 'REQUEST',
         resolveTo = 'schema',
         resolveFor = 'CONVERSION',
+        options = {
+          indentCharacter: '  ',
+          stackLimit: 10,
+          includeDeprecated: true
+        },
 
-        result = SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource, { components }),
+        result = SchemaUtils.safeSchemaFaker(
+          schema,
+          resolveTo,
+          resolveFor,
+          parameterSource,
+          { components, concreteUtils },
+          '',
+          undefined,
+          options
+        ),
         tooManyLevelsString = result[0].c.value;
 
       expect(result).to.not.equal(null);
@@ -139,7 +160,21 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         parameterSource = 'REQUEST',
         resolveTo = 'schema',
         resolveFor = 'CONVERSION',
-        fakedSchema = SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource, { components });
+        options = {
+          indentCharacter: '  ',
+          stackLimit: 10,
+          includeDeprecated: true
+        },
+        fakedSchema = SchemaUtils.safeSchemaFaker(
+          schema,
+          resolveTo,
+          resolveFor,
+          parameterSource,
+          { components, concreteUtils },
+          '',
+          undefined,
+          options
+        );
 
       expect(fakedSchema.value).to.equal('reference #/components/schem2 not found in the OpenAPI spec');
       done();
@@ -163,14 +198,22 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         parameterSource = 'REQUEST',
         resolveTo = 'schema',
         resolveFor = 'CONVERSION',
-        resolvedSchema = deref.resolveRefs(schema, parameterSource, { components }, {}, resolveFor, resolveTo),
+        resolvedSchema = deref.resolveRefs(schema,
+          parameterSource,
+          { components, concreteUtils },
+          { resolveFor, resolveTo }
+        ),
         schemaCache = {
-          schemaFakerCache: {},
-          schemaResolutionCache: {}
+          schemaFakerCache: {}
         },
-        key = hash('resolveToSchema ' + JSON.stringify(resolvedSchema)),
+        key = hash('resolveToSchema ' + JSON.stringify(resolvedSchema) + ' schemaFormatDEFAULT'),
+        options = {
+          indentCharacter: '  ',
+          stackLimit: 10,
+          includeDeprecated: true
+        },
         fakedSchema = SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource,
-          { components }, 'default', '  ', schemaCache);
+          { components, concreteUtils }, 'default', schemaCache, options);
 
       expect(schemaCache.schemaFakerCache).to.have.property(key);
       expect(schemaCache.schemaFakerCache[key]).to.equal(fakedSchema);
@@ -201,14 +244,21 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         resolveTo = 'example',
         resolveFor = 'CONVERSION',
         schemaCache = {
-          schemaFakerCache: {},
-          schemaResolutionCache: {}
+          schemaFakerCache: {}
         },
-        resolvedSchema = deref.resolveRefs(schema, parameterSource, { components }, schemaCache.schemaResolutionCache,
-          resolveFor, resolveTo),
-        key = hash('resolveToExample ' + JSON.stringify(resolvedSchema)),
+        resolvedSchema = deref.resolveRefs(schema,
+          parameterSource,
+          { components, concreteUtils },
+          { resolveFor, resolveTo }
+        ),
+        key = hash('resolveToExample ' + JSON.stringify(resolvedSchema) + ' schemaFormatDEFAULT'),
+        options = {
+          indentCharacter: '  ',
+          stackLimit: 10,
+          includeDeprecated: true
+        },
         fakedSchema = SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource,
-          { components }, 'default', '  ', schemaCache);
+          { components, concreteUtils }, 'default', schemaCache, options);
 
       expect(schemaCache.schemaFakerCache).to.have.property(key);
       expect(schemaCache.schemaFakerCache[key]).to.equal(fakedSchema);
@@ -218,6 +268,60 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
       done();
 
     });
+
+    it('should populate schemaFakerCache with distinct value when only the schemaFormat is different', function (done) {
+      var schema = {
+          $ref: '#/components/schema/request'
+        },
+        components = {
+          schema: {
+            request: {
+              properties: {
+                name: {
+                  type: 'string'
+                }
+              }
+            }
+          }
+        },
+        parameterSource = 'REQUEST',
+        resolveTo = 'schema',
+        resolveFor = 'CONVERSION',
+        resolvedSchema = deref.resolveRefs(schema,
+          parameterSource,
+          { components, concreteUtils },
+          { resolveFor, resolveTo }
+        ),
+        schemaCache = {
+          schemaFakerCache: {}
+        },
+        xml_key = hash('resolveToSchema ' + JSON.stringify(resolvedSchema) + ' schemaFormatXML'),
+        default_key = hash('resolveToSchema ' + JSON.stringify(resolvedSchema) + ' schemaFormatDEFAULT'),
+        options = {
+          indentCharacter: '  ',
+          stackLimit: 10,
+          includeDeprecated: true
+        },
+        fakedSchema_default = SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource,
+          { components, concreteUtils }, 'default', schemaCache, options),
+        fakedSchema_xml = SchemaUtils.safeSchemaFaker(schema, resolveTo, resolveFor, parameterSource,
+          { components, concreteUtils }, 'xml', schemaCache, options);
+
+      expect(schemaCache.schemaFakerCache).to.have.property(default_key);
+      expect(schemaCache.schemaFakerCache[default_key]).to.equal(fakedSchema_default);
+      expect(fakedSchema_default).to.eql({
+        name: '<string>'
+      });
+
+      expect(schemaCache.schemaFakerCache).to.have.property(xml_key);
+      expect(schemaCache.schemaFakerCache[xml_key]).to.equal(fakedSchema_xml);
+      expect(fakedSchema_xml).to.eql(
+        '<element>\n  <name>(string)</name>\n</element>'
+      );
+
+      done();
+    });
+
   });
 
   describe('convertToPmCollectionVariables function', function() {
@@ -582,6 +686,45 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
 
       done();
     });
+
+    it('should generate trie for definition with certain path segment same as JS object function names correctly',
+      function (done) {
+        var openapi = {
+            'openapi': '3.0.0',
+            'info': {
+              'version': '1.0.0',
+              'title': 'Swagger Petstore',
+              'license': {
+                'name': 'MIT'
+              }
+            },
+            'servers': [
+              {
+                'url': 'http://petstore.swagger.io/{v1}'
+              }
+            ],
+            'paths': {
+              '/constructor/v3/update-constructor': {
+                'get': {
+                  'summary': 'List all pets',
+                  'operationId': 'listPets',
+                  'responses': {
+                    '200': {
+                      'description': 'An paged array of pets'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          output = SchemaUtils.generateTrieFromPaths(openapi),
+          root = output.tree.root;
+
+        expect(root.children).to.be.an('object').that.has.all.keys('constructor');
+        expect(root.children.constructor.requestCount).to.equal(1);
+
+        done();
+      });
   });
 
   describe('convertPathVariables', function() {
@@ -636,7 +779,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
               format: 'int32'
             }
           }
-        ]
+        ],
+        {}, {}, {}
       );
       expect(retVal).to.be.an('array');
       expect(retVal[0].key).to.equal('varName');
@@ -648,7 +792,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
   describe('convertToPmBodyData', function() {
     it('should not fail when bodyObj is not defined', function() {
       var bodyWithSchema,
-        retValSchema = SchemaUtils.convertToPmBodyData(bodyWithSchema, 'ROOT', 'application/json');
+        retValSchema = SchemaUtils.convertToPmBodyData(bodyWithSchema, 'ROOT', 'application/json',
+          'REQUEST', 'tab', {}, {}, {});
 
       expect(retValSchema).to.be.equal('');
     });
@@ -660,20 +805,32 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             format: 'int32'
           }
         },
-        retValSchema = SchemaUtils.convertToPmBodyData(bodyWithSchema, 'ROOT', 'application/json');
+        retValSchema = SchemaUtils.convertToPmBodyData(bodyWithSchema, 'ROOT', 'application/json',
+          'REQUEST', 'tab', {}, { schemaFaker: true }, {});
 
       expect(retValSchema).to.be.equal('<integer>');
     });
 
     it('should work for example', function() {
       var bodyWithExample = {
+          example: 'This is a sample value'
+        },
+        retValExample = SchemaUtils.convertToPmBodyData(bodyWithExample, 'ROOT', 'application/json',
+          'REQUEST', 'tab', {}, {}, {});
+
+      expect(retValExample).to.equal('This is a sample value');
+    });
+
+    it('should work for example with value property', function() {
+      var bodyWithExample = {
           example: {
             value: 'This is a sample value'
           }
         },
-        retValExample = SchemaUtils.convertToPmBodyData(bodyWithExample, 'application/json');
+        retValExample = SchemaUtils.convertToPmBodyData(bodyWithExample, 'ROOT', 'application/json',
+          'REQUEST', 'tab', {}, {}, {});
 
-      expect(retValExample).to.equal('This is a sample value');
+      expect(retValExample.value).to.equal('This is a sample value');
     });
 
     it('should work for examples', function() {
@@ -748,7 +905,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           format: 'int64'
         }
       };
-      let pmHeader = SchemaUtils.convertToPmHeader(header);
+      let pmHeader = SchemaUtils.convertToPmHeader(header, 'ROOT', 'REQUEST', {}, {}, {});
       expect(pmHeader.key).to.equal(header.name);
       expect(pmHeader.description).to.equal(header.description);
       expect(typeof pmHeader.value).to.equal('string');// because schema v2.1.0 supports only string value.
@@ -760,7 +917,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         in: 'header',
         description: 'Header1'
       };
-      let pmHeader = SchemaUtils.convertToPmHeader(header);
+      let pmHeader = SchemaUtils.convertToPmHeader(header, 'ROOT', 'REQUEST', {}, {}, {});
       expect(pmHeader.key).to.equal(header.name);
       expect(pmHeader.description).to.equal(header.description);
       expect(pmHeader.value).to.equal('');
@@ -777,7 +934,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           default: 'Bearer'
         }
       };
-      let pmHeader = SchemaUtils.convertToPmHeader(header);
+      let pmHeader = SchemaUtils.convertToPmHeader(header, 'ROOT', 'REQUEST', {}, { schemaFaker: true }, {});
       expect(pmHeader.key).to.equal('Authorization');
       expect(pmHeader.value).to.equal('Bearer'); // not \"Bearer\"
       done();
@@ -1008,7 +1165,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
   describe('convertToPmQueryParameters ', function() {
     it('Should convert undefined queryParam to pm param', function (done) {
       var param;
-      let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+      let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+        schemaFaker: true
+      });
       expect(pmParam.length).to.equal(0);
       done();
     });
@@ -1018,7 +1177,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         in: 'query',
         description: 'query param'
       };
-      let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+      let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+        schemaFaker: true
+      });
       expect(pmParam[0].key).to.equal(param.name);
       expect(pmParam[0].description).to.equal(param.description);
       expect(pmParam[0].value).to.equal('');
@@ -1034,7 +1195,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           default: 10
         }
       };
-      let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+      let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+        schemaFaker: true
+      });
       expect(pmParam[0].value).to.equal('10'); // '10', not 10
       done();
     });
@@ -1048,7 +1211,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           default: true
         }
       };
-      let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+      let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+        schemaFaker: true
+      });
       expect(pmParam[0].value).to.equal('true'); // 'true', not true
       done();
     });
@@ -1070,14 +1235,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           };
           it('schemaFaker = true', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+              schemaFaker: true
+            });
             expect(pmParam[0].key).to.equal(param.name);
             expect(pmParam[0].description).to.equal(param.description);
             expect(pmParam[0].value).to.equal('<long>');
             done();
           });
           it('schemaFaker = false', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'root', null, { schemaFaker: false });
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', null, { schemaFaker: false });
             expect(pmParam[0].key).to.equal(param.name);
             expect(pmParam[0].description).to.equal(param.description);
             expect(pmParam[0].value).to.equal('');
@@ -1100,14 +1267,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           };
           it('schemaFaker = true', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+              schemaFaker: true
+            });
             expect(pmParam[0].key).to.equal(param.name);
             expect(pmParam[0].description).to.equal(param.description);
             expect(pmParam[0].value).to.have.string(',');
             done();
           });
           it('schemaFaker = false', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'root', null, { schemaFaker: false });
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', null, { schemaFaker: false });
             expect(pmParam[0].key).to.equal(param.name);
             expect(pmParam[0].description).to.equal(param.description);
             expect(pmParam[0].value).to.have.string('');
@@ -1129,14 +1298,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam[0].key).to.equal(param.name);
           expect(pmParam[0].description).to.equal(param.description);
           expect(pmParam[0].value).to.have.string('%20');
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', null, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', null, {
             schemaFaker: false
           });
           expect(pmParam[0].key).to.equal(param.name);
@@ -1159,14 +1330,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam[0].key).to.equal(param.name);
           expect(pmParam[0].description).to.equal(param.description);
           expect(pmParam[0].value).to.have.string('|');
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
             schemaFaker: false
           });
           expect(pmParam[0].key).to.equal(param.name);
@@ -1191,7 +1364,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam[0].key).to.equal(param.name + '[R]');
           expect(pmParam[1].key).to.equal(param.name + '[G]');
           expect(pmParam[2].key).to.equal(param.name + '[B]');
@@ -1199,7 +1374,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
             schemaFaker: false
           });
           expect(pmParam).to.eql([]);
@@ -1220,14 +1395,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam[0].key).to.equal(param.name);
           expect(pmParam[0].description).to.equal(param.description);
           expect(pmParam[0].value).to.have.string(',');
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
             schemaFaker: false
           });
           expect(pmParam[0].key).to.equal(param.name);
@@ -1264,7 +1441,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           };
           it('schemaFaker = true', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+              schemaFaker: true
+            });
             expect(pmParam[0].key).to.equal('id');
             expect(pmParam[1].key).to.equal('name');
             expect(pmParam[0].description).to.equal(param.description);
@@ -1274,7 +1453,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             done();
           });
           it('schemaFaker = false', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
               schemaFaker: false
             });
             expect(pmParam[0].key).to.equal(param.name);
@@ -1308,7 +1487,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           };
           it('schemaFaker = true', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+              schemaFaker: true
+            });
             expect(pmParam[0].key).to.equal(param.name);
             expect(pmParam[0].description).to.equal(param.description);
             expect(pmParam[0].value).to.have.string('id');
@@ -1316,7 +1497,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             done();
           });
           it('schemaFaker = false', function (done) {
-            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+            let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
               schemaFaker: false
             });
             expect(pmParam[0].key).to.equal(param.name);
@@ -1351,14 +1532,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam[0].key).to.equal(param.name);
           expect(pmParam[0].description).to.equal(param.description);
           expect(pmParam[0].value).to.have.string('%20');
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
             schemaFaker: false
           });
           expect(pmParam[0].key).to.equal(param.name);
@@ -1392,14 +1575,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam[0].key).to.equal(param.name);
           expect(pmParam[0].description).to.equal(param.description);
           expect(pmParam[0].value).to.have.string('|');
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
             schemaFaker: false
           });
           expect(pmParam[0].key).to.equal(param.name);
@@ -1440,7 +1625,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam).to.have.lengthOf(5);
           expect(pmParam[0].key).to.equal(param.name + '[id]');
           expect(pmParam[1].key).to.equal(param.name + '[name]');
@@ -1458,7 +1645,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
             schemaFaker: false
           });
           expect(pmParam).to.eql([]);
@@ -1489,14 +1676,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           }
         };
         it('schemaFaker = true', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param);
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
+            schemaFaker: true
+          });
           expect(pmParam[0].key).to.equal(param.name);
           expect(pmParam[0].description).to.equal(param.description);
           expect(typeof pmParam[0].value).to.equal('string');
           done();
         });
         it('schemaFaker = false', function (done) {
-          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'request', {}, {
+          let pmParam = SchemaUtils.convertToPmQueryParameters(param, 'ROOT', {}, {
             schemaFaker: false
           });
           expect(pmParam[0].key).to.equal(param.name);
@@ -1516,13 +1705,15 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
       };
 
       it('style:deepObject } to pm param', function (done) {
-        let pmParam = SchemaUtils.convertToPmQueryParameters(_.assign(emptyObjParam, { style: 'deepObject' }));
+        let pmParam = SchemaUtils.convertToPmQueryParameters(_.assign(emptyObjParam, { style: 'deepObject' }), 'ROOT',
+          {}, { schemaFaker: true });
         expect(pmParam).to.eql([]);
         done();
       });
 
       it('style:form } to pm param', function (done) {
-        let pmParam = SchemaUtils.convertToPmQueryParameters(_.assign(emptyObjParam, { style: 'form' }));
+        let pmParam = SchemaUtils.convertToPmQueryParameters(_.assign(emptyObjParam, { style: 'form' }), 'ROOT',
+          {}, { schemaFaker: true });
         expect(pmParam).to.eql([]);
         done();
       });
@@ -1531,6 +1722,195 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
 
   describe('convertToPmBody function', function() {
     describe('should convert requestbody of media type', function() {
+      describe('requestType=EXAMPLE', function () {
+        it(' application/json', function(done) {
+          let requestBody = {
+              description: 'body description',
+              content: {
+                'application/json': {
+                  'schema': {
+                    type: 'object',
+                    required: [
+                      'id',
+                      'name'
+                    ],
+                    properties: {
+                      id: {
+                        type: 'integer',
+                        format: 'int64'
+                      },
+                      name: {
+                        type: 'string'
+                      },
+                      neglect: { // this will be neglected since schemaFaker does not process
+                        type: 'string',
+                        format: 'binary'
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            result, resultBody;
+          result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+            exampleParametersResolution: 'example',
+            schemaFaker: true
+          });
+          resultBody = JSON.parse(result.body.raw);
+          expect(resultBody.id).to.be.a('number');
+          expect(resultBody.name).to.be.a('string');
+          expect(result.contentHeader).to.deep.include({ key: 'Content-Type', value: 'application/json' });
+          expect(result.body.options.raw.language).to.equal('json');
+          done();
+        });
+
+        it(' application/x-www-form-urlencoded', function(done) {
+          let requestBody = {
+              description: 'body description',
+              content: {
+                'application/x-www-form-urlencoded': {
+                  examples: ''
+                }
+              }
+            },
+            result, resultBody;
+          result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+            exampleParametersResolution: 'example'
+          });
+          resultBody = (result.body.urlencoded.toJSON());
+          expect(resultBody).to.eql([]);
+          expect(result.contentHeader).to.deep.include(
+            { key: 'Content-Type', value: 'application/x-www-form-urlencoded' });
+          done();
+        });
+
+        it(' multipart/form-data', function(done) {
+          let requestBody = {
+              description: 'body description',
+              content: {
+                'multipart/form-data': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      file: {
+                        type: 'array',
+                        items: {
+                          type: 'string'
+                        }
+                      }
+                    },
+                    required: ['file']
+                  }
+                }
+              }
+            },
+            result, resultBody;
+          result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+            exampleParametersResolution: 'example',
+            schemaFaker: true
+          });
+          resultBody = (result.body.formdata.toJSON());
+          expect(resultBody[0].key).to.equal('file');
+          expect(result.contentHeader).to.deep.include(
+            { key: 'Content-Type', value: 'multipart/form-data' });
+          done();
+        });
+
+        it(' text/xml', function(done) { // not properly done
+          let requestBody = {
+              description: 'body description',
+              content: {
+                'text/xml': {
+                  schema: {
+                    type: 'string',
+                    xml: {
+                      name: 'AnXMLObject'
+                    }
+                  },
+                  examples: {
+                    xml: {
+                      summary: 'A list containing two items',
+                      value: 'test'
+                    }
+                  }
+                }
+              }
+            },
+            result, resultBody;
+          result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+            exampleParametersResolution: 'example'
+          });
+          resultBody = (result.body.raw);
+          expect(resultBody).to.equal(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<AnXMLObject>test</AnXMLObject>'
+          );
+          expect(result.contentHeader).to.deep.include(
+            { key: 'Content-Type', value: 'text/xml' });
+          expect(result.body.options.raw.language).to.equal('xml');
+          done();
+        });
+
+        it(' text/plain', function(done) {
+          let requestBody = {
+              description: 'body description',
+              content: {
+                'text/plain': {
+                  example: 'text/plain description'
+                }
+              }
+            },
+            result, resultBody;
+          result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+            exampleParametersResolution: 'example'
+          });
+          resultBody = result.body.raw;
+          expect(resultBody)
+            .to.equal('text/plain description');
+          expect(result.contentHeader).to.deep.include(
+            { key: 'Content-Type', value: 'text/plain' });
+          done();
+        });
+
+        it(' text/html', function(done) {
+          var requestBody = {
+              description: 'body description',
+              content: {
+                'text/html': {
+                  example: '<html><body><ul><li>item 1</li><li>item 2</li></ul></body></html>'
+                }
+              }
+            },
+            result, resultBody;
+          result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+            exampleParametersResolution: 'example'
+          });
+          resultBody = (result.body.raw);
+          expect(resultBody).to.equal('<html><body><ul><li>item 1</li><li>item 2</li></ul></body></html>');
+          expect(result.contentHeader).to.deep.include(
+            { key: 'Content-Type', value: 'text/html' });
+          done();
+        });
+
+        it(' application/javascript', function(done) { // not properly done
+          var requestBody = {
+              description: 'body description',
+              content: {
+                'application/javascript': {
+                }
+              }
+            },
+            result, resultBody;
+          result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+            exampleParametersResolution: 'example'
+          });
+          resultBody = (result.body.raw);
+          expect(typeof resultBody).to.equal('string');
+          expect(result.contentHeader).to.deep.include(
+            { key: 'Content-Type', value: 'application/javascript' });
+          done();
+        });
+      });
+
       it(' application/json', function(done) {
         var requestBody = {
             description: 'body description',
@@ -1560,11 +1940,15 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           result, resultBody;
-        result = SchemaUtils.convertToPmBody(requestBody);
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'schema',
+          schemaFaker: true
+        });
         resultBody = JSON.parse(result.body.raw);
         expect(resultBody.id).to.equal('<long>');
         expect(resultBody.name).to.equal('<string>');
         expect(result.contentHeader).to.deep.include({ key: 'Content-Type', value: 'application/json' });
+        expect(result.body.options.raw.language).to.equal('json');
         done();
       });
       it(' application/x-www-form-urlencoded', function(done) {
@@ -1577,7 +1961,9 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           result, resultBody;
-        result = SchemaUtils.convertToPmBody(requestBody);
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'example'
+        });
         resultBody = (result.body.urlencoded.toJSON());
         expect(resultBody).to.eql([]);
         expect(result.contentHeader).to.deep.include(
@@ -1592,22 +1978,37 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
                 schema: {
                   type: 'object',
                   properties: {
-                    file: {
+                    array: {
                       type: 'array',
                       items: {
                         type: 'string'
                       }
+                    },
+                    file: {
+                      type: 'string',
+                      format: 'binary'
                     }
                   },
-                  required: ['file']
+                  required: ['array']
+                },
+                encoding: {
+                  file: {
+                    contentType: 'application/binary'
+                  }
                 }
               }
             }
           },
           result, resultBody;
-        result = SchemaUtils.convertToPmBody(requestBody);
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'example',
+          schemaFaker: true
+        });
         resultBody = (result.body.formdata.toJSON());
-        expect(resultBody[0].key).to.equal('file');
+        expect(resultBody[0].key).to.equal('array');
+        expect(resultBody[1].key).to.equal('file');
+        expect(resultBody[1].type).to.equal('file');
+        expect(resultBody[1].contentType).to.equal('application/binary');
         expect(result.contentHeader).to.deep.include(
           { key: 'Content-Type', value: 'multipart/form-data' });
         done();
@@ -1617,23 +2018,33 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             description: 'body description',
             content: {
               'text/xml': {
+                schema: {
+                  type: 'string',
+                  xml: {
+                    name: 'AnXMLObject'
+                  }
+                },
                 examples: {
                   xml: {
                     summary: 'A list containing two items',
-                    value: 'text/plain description'
+                    value: 'test'
                   }
                 }
               }
             }
           },
           result, resultBody;
-        result = SchemaUtils.convertToPmBody(requestBody, 'ROOT', {}, {
-          requestParametersResolution: 'example'
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          requestParametersResolution: 'example',
+          exampleParametersResolution: 'example'
         });
         resultBody = (result.body.raw);
-        expect(resultBody).to.equal('"text/plain description"');
+        expect(resultBody).to.equal(
+          '<?xml version="1.0" encoding="UTF-8"?>\n<AnXMLObject>test</AnXMLObject>'
+        );
         expect(result.contentHeader).to.deep.include(
           { key: 'Content-Type', value: 'text/xml' });
+        expect(result.body.options.raw.language).to.equal('xml');
         done();
       });
       it(' text/plain', function(done) {
@@ -1641,17 +2052,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             description: 'body description',
             content: {
               'text/plain': {
-                example: {
-                  summary: 'A list containing two items',
-                  value: 'text/plain description'
-                }
+                example: 'text/plain description'
               }
             }
           },
           result, resultBody;
-        result = SchemaUtils.convertToPmBody(requestBody);
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'example'
+        });
         resultBody = result.body.raw;
-        expect(resultBody).to.equal('"text/plain description"');
+        expect(resultBody).to.equal('text/plain description');
         expect(result.contentHeader).to.deep.include(
           { key: 'Content-Type', value: 'text/plain' });
         done();
@@ -1661,17 +2071,16 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             description: 'body description',
             content: {
               'text/html': {
-                example: {
-                  summary: 'A list containing two items',
-                  value: '<html><body><ul><li>item 1</li><li>item 2</li></ul></body></html>'
-                }
+                example: '<html><body><ul><li>item 1</li><li>item 2</li></ul></body></html>'
               }
             }
           },
           result, resultBody;
-        result = SchemaUtils.convertToPmBody(requestBody);
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'example'
+        });
         resultBody = (result.body.raw);
-        expect(resultBody).to.equal('"<html><body><ul><li>item 1</li><li>item 2</li></ul></body></html>"');
+        expect(resultBody).to.equal('<html><body><ul><li>item 1</li><li>item 2</li></ul></body></html>');
         expect(result.contentHeader).to.deep.include(
           { key: 'Content-Type', value: 'text/html' });
         done();
@@ -1685,11 +2094,107 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           result, resultBody;
-        result = SchemaUtils.convertToPmBody(requestBody);
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'example'
+        });
         resultBody = (result.body.raw);
         expect(typeof resultBody).to.equal('string');
         expect(result.contentHeader).to.deep.include(
           { key: 'Content-Type', value: 'application/javascript' });
+        done();
+      });
+      it(' image/*', function (done) {
+        var requestBody = {
+            description: 'body description',
+            content: {
+              'image/*': {
+                schema: {
+                  type: 'string',
+                  format: 'binary'
+                }
+              }
+            }
+          },
+          result;
+
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'example'
+        });
+        expect(result.body.mode).to.equal('file');
+        done();
+      });
+      it(' application/vnd.api+json (headers with different structure but still of JSON type/family)', function(done) {
+        var requestBody = {
+            description: 'body description',
+            content: {
+              'application/vnd.api+json': {
+                'schema': {
+                  type: 'object',
+                  required: [
+                    'id',
+                    'name'
+                  ],
+                  properties: {
+                    id: {
+                      type: 'integer',
+                      format: 'int64'
+                    },
+                    name: {
+                      type: 'string'
+                    },
+                    neglect: { // this will be neglected since schemaFaker does not process
+                      type: 'string',
+                      format: 'binary'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          result, resultBody;
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          exampleParametersResolution: 'schema',
+          schemaFaker: true
+        });
+        resultBody = JSON.parse(result.body.raw);
+        expect(resultBody.id).to.equal('<long>');
+        expect(resultBody.name).to.equal('<string>');
+        expect(result.contentHeader).to.deep.include({ key: 'Content-Type', value: 'application/vnd.api+json' });
+        expect(result.body.options.raw.language).to.equal('json');
+        done();
+      });
+      it(' application/vnd.api+xml (headers with different structure but still of XML type/family)', function(done) {
+        var requestBody = {
+            description: 'body description',
+            content: {
+              'application/vnd.api+xml': {
+                schema: {
+                  type: 'string',
+                  xml: {
+                    name: 'AnXMLObject'
+                  }
+                },
+                examples: {
+                  xml: {
+                    summary: 'A list containing two items',
+                    value: 'test'
+                  }
+                }
+              }
+            }
+          },
+          result, resultBody;
+        result = SchemaUtils.convertToPmBody(requestBody, 'EXAMPLE', {}, {
+          requestParametersResolution: 'example',
+          exampleParametersResolution: 'example'
+        });
+        resultBody = (result.body.raw);
+        expect(resultBody).to.equal(
+          '<?xml version="1.0" encoding="UTF-8"?>\n<AnXMLObject>test</AnXMLObject>'
+        );
+        expect(result.contentHeader).to.deep.include(
+          { key: 'Content-Type', value: 'application/vnd.api+xml' });
+        expect(result.body.options.raw.language).to.equal('xml');
         done();
       });
       // things remaining : application/xml
@@ -1726,7 +2231,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           pmResponseBody;
-        pmResponseBody = JSON.parse(SchemaUtils.convertToPmResponseBody(contentObj).responseBody);
+        pmResponseBody = JSON.parse(SchemaUtils.convertToPmResponseBody(contentObj, {},
+          { schemaFaker: true }).responseBody);
         expect(pmResponseBody.id).to.equal('<long>');
         expect(pmResponseBody.name).to.equal('<string>');
       });
@@ -1752,7 +2258,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           pmResponseBody;
-        pmResponseBody = JSON.parse(SchemaUtils.convertToPmResponseBody(contentObj).responseBody);
+        pmResponseBody = JSON.parse(SchemaUtils.convertToPmResponseBody(contentObj, {},
+          { schemaFaker: true }).responseBody);
         expect(pmResponseBody.id).to.equal('<long>');
         expect(pmResponseBody.name).to.equal('<string>');
       });
@@ -1778,7 +2285,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           pmResponseBody;
-        pmResponseBody = JSON.parse(SchemaUtils.convertToPmResponseBody(contentObj).responseBody);
+        pmResponseBody = JSON.parse(SchemaUtils.convertToPmResponseBody(contentObj, {},
+          { schemaFaker: true }).responseBody);
         expect(pmResponseBody.id).to.equal('<long>');
         expect(pmResponseBody.name).to.equal('<string>');
       });
@@ -1797,7 +2305,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           },
           pmResponseBody;
         pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj, {}, {
-          indentCharacter: '\t'
+          indentCharacter: '\t',
+          schemaFaker: true
         }).responseBody;
         expect(pmResponseBody).to.equal('{\n\t"id": "<integer>"\n}');
       });
@@ -1810,7 +2319,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           pmResponseBody;
-        pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj).responseBody;
+        pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj, {},
+          { schemaFaker: true }).responseBody;
         expect(typeof pmResponseBody).to.equal('string');
       });
       it('with Content-Type application/xml', function() {
@@ -1837,10 +2347,12 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
           },
           pmResponseBody;
         pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj, {}, {
-          indentCharacter: ' '
+          indentCharacter: ' ',
+          schemaFaker: true
         }).responseBody;
         expect(pmResponseBody).to.equal(
           [
+            '<?xml version="1.0" encoding="UTF-8"?>',
             '<Person id="(integer)">',
             ' <sample:name xmlns:sample="http://example.com/schema/sample">(string)</sample:name>',
             ' <hobbies>',
@@ -1858,7 +2370,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           pmResponseBody;
-        pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj).responseBody;
+        pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj, {},
+          { schemaFaker: true }).responseBody;
         expect(typeof pmResponseBody).to.equal('string');
       });
       it('with Content-Type unsupported', function() {
@@ -1883,7 +2396,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
             }
           },
           pmResponseBody;
-        pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj).responseBody;
+        pmResponseBody = SchemaUtils.convertToPmResponseBody(contentObj, {},
+          { schemaFaker: true }).responseBody;
         expect(pmResponseBody).to.equal('');
       });
       // things remaining application/xml, application/javascript
@@ -1918,7 +2432,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         code = '20X',
         pmResponse, responseBody;
 
-      pmResponse = SchemaUtils.convertToPmResponse(response, code).toJSON();
+      pmResponse = SchemaUtils.convertToPmResponse(response, code, {}, {},
+        { schemaFaker: true }).toJSON();
       responseBody = JSON.parse(pmResponse.body);
       expect(pmResponse.name).to.equal(response.description);
       expect(pmResponse.code).to.equal(200);
@@ -1958,8 +2473,10 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         code = '20X',
         pmResponse;
 
-      pmResponse = SchemaUtils.convertToPmResponse(response, code).toJSON();
-      expect(pmResponse.body).to.equal('<element>\n <id>(integer)</id>\n <name>(string)</name>\n</element>');
+      pmResponse = SchemaUtils.convertToPmResponse(response, code, {}, {},
+        { schemaFaker: true, indentCharacter: '  ' }).toJSON();
+      expect(pmResponse.body).to.equal('<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<element>\n  <id>(integer)</id>\n  <name>(string)</name>\n</element>');
       expect(pmResponse.name).to.equal(response.description);
       expect(pmResponse.code).to.equal(200);
       expect(pmResponse._postman_previewlanguage).to.equal('xml');
@@ -1976,7 +2493,8 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         code = '201',
         pmResponse;
 
-      pmResponse = SchemaUtils.convertToPmResponse(response, code).toJSON();
+      pmResponse = SchemaUtils.convertToPmResponse(response, code, {}, {},
+        { schemaFaker: true }).toJSON();
       expect(pmResponse.name).to.equal(response.description);
       expect(pmResponse.code).to.equal(201);
       expect(pmResponse.body).to.equal('');
@@ -2025,15 +2543,240 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
               }
             }
           }
-        });
+        }, { schemaFaker: true });
 
       expect(pmResponse.headers.members[0].key).to.equal('Retry-After');
       expect(pmResponse.headers.members[0].description).to.equal('Some description');
       done();
     });
+    it('should return proper path variables in the SDK response original request', function (done) {
+      const response = {
+          'description': 'The required organization detail',
+          'content': {
+            'application/json': {
+              'schema': { '$ref': '#/components/schemas/Organization' }
+            }
+          }
+        },
+        originalRequest = {
+          'method': 'GET',
+          'url': {
+            'path': [
+              'organization',
+              ':organizationID'
+            ],
+            'host': [
+              '{{baseUrl}}'
+            ],
+            'query': [],
+            'variable': [
+              {
+                'description': ' (This can only be one of 15500)',
+                'type': 'any',
+                'value': '{{port}}',
+                'key': 'port'
+              },
+              {
+                'description': ' (This can only be one of v1)',
+                'type': 'any',
+                'value': '{{version}}',
+                'key': 'version'
+              },
+              {
+                'disabled': false,
+                'type': 'any',
+                'value': '8888',
+                'key': 'organizationID',
+                'description': '(Required) The id of the organization'
+              }
+            ]
+          },
+          'header': [
+            {
+              'disabled': false,
+              'key': 'Content-Type',
+              'value': 'application/json',
+              'description': ''
+            }
+          ],
+          'body': {}
+        },
+        components = {
+          'components': {
+            'schemas': {
+              'Organization': {
+                'type': 'object',
+                'required': [
+                  'id',
+                  'name',
+                  'businessName'
+                ],
+                'properties': {
+                  'id': {
+                    'type': 'integer',
+                    'format': 'uint32',
+                    'example': 1
+                  },
+                  'name': {
+                    'type': 'string',
+                    'example': 'My Company'
+                  },
+                  'businessName': {
+                    'type': 'string',
+                    'example': 'My Super Company'
+                  },
+                  'address': {
+                    'type': 'object',
+                    '$ref': '#/components/schemas/Address'
+                  }
+                }
+              },
+              'Address': {
+                'type': 'object',
+                'properties': {
+                  'line1': {
+                    'type': 'string',
+                    'example': 'Avenida da República'
+                  },
+                  'line2': {
+                    'type': 'string',
+                    'example': 'Nº 458, 2ºEsq'
+                  },
+                  'city': {
+                    'type': 'string',
+                    'example': 'Lisboa'
+                  },
+                  'state': {
+                    'type': 'string',
+                    'example': 'Lisboa'
+                  },
+                  'postalCode': {
+                    'type': 'string',
+                    'example': '1000-427'
+                  },
+                  'countryCode': {
+                    'type': 'integer',
+                    'format': 'int64',
+                    'example': 620
+                  }
+                }
+              }
+            },
+            'parameters': {
+              'contentType': {
+                'name': 'Content-Type',
+                'in': 'header',
+                'schema': {
+                  'type': 'string',
+                  'example': 'application/json'
+                }
+              },
+              'organizationID': {
+                'name': 'organizationID',
+                'in': 'path',
+                'description': 'The id of the organization',
+                'required': true,
+                'example': 8888,
+                'schema': {
+                  'type': 'integer',
+                  'example': 8888
+                }
+              }
+            }
+          },
+          'paths': {
+            '/organization/{organizationID}': {
+              'get': {
+                'summary': 'Get Organization by ID',
+                'operationId': 'getOrganizationByID',
+                'tags': [
+                  'Organization Endpoints'
+                ],
+                'parameters': [
+                  {
+                    'name': 'Content-Type',
+                    'in': 'header',
+                    'schema': {
+                      'type': 'string',
+                      'example': 'application/json'
+                    }
+                  },
+                  {
+                    'name': 'organizationID',
+                    'in': 'path',
+                    'description': 'The id of the organization',
+                    'required': true,
+                    'example': 8888,
+                    'schema': {
+                      'type': 'integer',
+                      'example': 8888
+                    }
+                  }
+                ],
+                'responses': {
+                  '200': {
+                    'description': 'The required organization detail',
+                    'content': {
+                      'application/json': {
+                        'schema': {
+                          '$ref': '#/components/schemas/Organization'
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        pmResponse = SchemaUtils.convertToPmResponse(response, '200', originalRequest, components,
+          { schemaFaker: true }).toJSON(),
+        pathVariables = _.get(pmResponse, 'originalRequest.url.variable');
+
+      expect(pathVariables.length).to.eql(3);
+      expect(pathVariables).to.eql([
+        {
+          description: {
+            content: ' (This can only be one of 15500)',
+            type: 'text/plain'
+          },
+          key: 'port',
+          type: 'any',
+          value: '{{port}}'
+        },
+        {
+          description: {
+            content: ' (This can only be one of v1)',
+            type: 'text/plain'
+          },
+          key: 'version',
+          type: 'any',
+          value: '{{version}}'
+        },
+        {
+          description: {
+            content: '(Required) The id of the organization',
+            type: 'text/plain'
+          },
+          disabled: false,
+          key: 'organizationID',
+          type: 'any',
+          value: '8888'
+        }
+      ]);
+
+      return done();
+    });
   });
 
   describe('fixPathVariablesInUrl function', function() {
+    it('should be able to handle incorrect urls', function(done) {
+      expect(SchemaUtils.fixPathVariablesInUrl({})).to.equal('');
+      expect(SchemaUtils.fixPathVariablesInUrl(null)).to.equal('');
+      expect(SchemaUtils.fixPathVariablesInUrl(undefined)).to.equal('');
+      done();
+    });
+
     it('should convert a url with scheme and path variables', function(done) {
       var convertedUrl = SchemaUtils.fixPathVariablesInUrl('{scheme}://developer.uspto.gov/{path0}/segment/{path1}');
       expect(convertedUrl).to.equal('{{scheme}}://developer.uspto.gov/{{path0}}/segment/{{path1}}');
@@ -2047,6 +2790,18 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
 
       expect(SchemaUtils.fixPathVariablesInUrl('{protocol}://{host}:{port}/{contextpath}/{restapi}'))
         .to.equal('{{protocol}}://{{host}}:{{port}}/{{contextpath}}/{{restapi}}');
+
+      done();
+    });
+
+    it('should correctly handle non string values', function(done) {
+      expect(SchemaUtils.fixPathVariablesInUrl(123)).to.equal('');
+
+      expect(SchemaUtils.fixPathVariablesInUrl([])).to.equal('');
+
+      expect(SchemaUtils.fixPathVariablesInUrl({})).to.equal('');
+
+      expect(SchemaUtils.fixPathVariablesInUrl(true)).to.equal('');
 
       done();
     });
@@ -2256,7 +3011,7 @@ describe('SCHEMA UTILITY FUNCTION TESTS ', function () {
         explode: true
       };
 
-      SchemaUtils.getParamSerialisationInfo(param, 'REQUEST', {}, {});
+      SchemaUtils.getParamSerialisationInfo(param, 'REQUEST', {});
       expect(param.schema).to.have.property('type', 'array');
       expect(param.schema.items).to.have.property('type', 'string');
       expect(param.schema).to.not.have.property('default');
@@ -2474,5 +3229,239 @@ describe('getPostmanUrlSchemaMatchScore function', function() {
     // only one path var (spaceId) should be identified as others will be stored as collection variable
     expect(endpointMatchScore.pathVars).to.have.lengthOf(1);
     expect(endpointMatchScore.pathVars[0]).to.eql({ key: 'spaceId', value: ':spaceId' });
+  });
+});
+
+describe('findCommonSubpath method', function () {
+  it('should return aabb with input ["aa/bb/cc/dd", "aa/bb"]', function () {
+    const result = Utils.findCommonSubpath(['aa/bb/cc/dd', 'aa/bb']);
+    expect(result).to.equal('aa/bb');
+  });
+
+  it('should return empty string with undefined input', function () {
+    const result = Utils.findCommonSubpath();
+    expect(result).to.equal('');
+  });
+
+  it('should return empty string with empty array input', function () {
+    const result = Utils.findCommonSubpath([]);
+    expect(result).to.equal('');
+  });
+
+  it('should return aabb with input ["aa/bb/cc/dd", "aa/bb", undefined]', function () {
+    const result = Utils.findCommonSubpath(['aa/bb/cc/dd', 'aa/bb', undefined]);
+    expect(result).to.equal('aa/bb');
+  });
+
+  it('should return "" with input ["aabbccdd", "aabb", "ccddee"]', function () {
+    const result = Utils.findCommonSubpath(['aa/bb/cc/dd', 'aa/bb', 'ccddee']);
+    expect(result).to.equal('');
+  });
+
+});
+
+describe('getAuthHelper method - OAuth2 Flows', function() {
+  it('Should parse OAuth2 configuration to collection (Single Flow) - Type 1', function() {
+    const openAPISpec = {
+        'components': {
+          'responses': {},
+          'schemas': {},
+          'securitySchemes': {
+            'oauth2': {
+              'flows': {
+                'clientCredentials': {
+                  'scopes': {},
+                  'tokenUrl': 'https://example.com/oauth2/token'
+                }
+              },
+              'type': 'oauth2'
+            }
+          }
+        },
+        'info': {
+          'title': 'API',
+          'version': '0.2'
+        },
+        'openapi': '3.0.0',
+        'paths': {},
+        'security': [
+          {
+            'oauth2': []
+          }
+        ],
+        'servers': [
+          {
+            'url': 'https://example.com',
+            'variables': {}
+          }
+        ],
+        'tags': [],
+        'securityDefs': {
+          'oauth2': {
+            'flows': {
+              'clientCredentials': {
+                'scopes': {},
+                'tokenUrl': 'https://example.com/oauth2/token'
+              }
+            },
+            'type': 'oauth2'
+          }
+        },
+        'baseUrl': 'https://example.com',
+        'baseUrlVariables': {}
+      },
+      securitySet = [{ oauth2: [] }],
+      helperData = SchemaUtils.getAuthHelper(openAPISpec, securitySet);
+
+    expect(helperData.type).to.be.equal('oauth2');
+    expect(helperData).to.have.property('oauth2').with.lengthOf(2);
+    expect(helperData.oauth2[0]).to.be.an('object');
+    expect(helperData).to.deep.equal({
+      type: 'oauth2',
+      oauth2: [
+        {
+          key: 'accessTokenUrl',
+          value: 'https://example.com/oauth2/token'
+        },
+        { key: 'grant_type', value: 'client_credentials' }
+      ]
+    });
+  });
+
+  it('Should parse OAuth2 configuration to collection (Multiple Flow types)- Type 2', function() {
+    const openAPISpec = {
+        components: {
+          responses: {},
+          schemas: {},
+          securitySchemes: {
+            oauth2: {
+              type: 'oauth2',
+              flows: {
+                implicit: {
+                  authorizationUrl: 'https://example.com/api/oauth/dialog',
+                  scopes: {
+                    'write:pets': 'modify pets in your account',
+                    'read:pets': 'read your pets'
+                  }
+                },
+                authorizationCode: {
+                  authorizationUrl: 'https://example.com/api/oauth/dialog',
+                  tokenUrl: 'https://example.com/api/oauth/token',
+                  scopes: {
+                    'write:pets': 'modify pets in your account',
+                    'read:pets': 'read your pets'
+                  }
+                }
+              }
+            }
+          }
+        },
+        info: { title: 'API', version: '0.2' },
+        openapi: '3.0.0',
+        paths: {},
+        security: [{ oauth2: [] }],
+        servers: [{ url: 'https://myserver.com', variables: {} }],
+        tags: [],
+        securityDefs: {
+          oauth2: {
+            type: 'oauth2',
+            flows: {
+              implicit: {
+                authorizationUrl: 'https://example.com/api/oauth/dialog',
+                scopes: {
+                  'write:pets': 'modify pets in your account',
+                  'read:pets': 'read your pets'
+                }
+              },
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/api/oauth/dialog',
+                tokenUrl: 'https://example.com/api/oauth/token',
+                scopes: {
+                  'write:pets': 'modify pets in your account',
+                  'read:pets': 'read your pets'
+                }
+              }
+            }
+          }
+        },
+        baseUrl: 'https://myserver.com',
+        baseUrlVariables: {}
+      },
+      securitySet = [{ oauth2: [] }],
+      helperData = SchemaUtils.getAuthHelper(openAPISpec, securitySet);
+
+    expect(helperData.type).to.be.equal('oauth2');
+    expect(helperData).to.have.property('oauth2').with.lengthOf(3);
+    expect(helperData.oauth2[0]).to.be.an('object');
+    expect(helperData).to.deep.equal({
+      'type': 'oauth2',
+      'oauth2': [
+        {
+          'key': 'scope',
+          'value': 'write:pets read:pets'
+        },
+        {
+          'key': 'authUrl',
+          'value': 'https://example.com/api/oauth/dialog'
+        },
+        {
+          'key': 'grant_type',
+          'value': 'implicit'
+        }
+      ]
+    });
+  });
+
+  it('Scopes are parsed as sequence of strings', function() {
+    const openAPISpec = {
+        components: {
+          responses: {},
+          schemas: {},
+          securitySchemes: {
+            oauth2: {
+              type: 'oauth2',
+              flows: {
+                implicit: {
+                  authorizationUrl: 'https://example.com/api/oauth/dialog',
+                  scopes: {
+                    'write:pets': 'modify pets in your account',
+                    'read:pets': 'read your pets'
+                  }
+                }
+              }
+            }
+          }
+        },
+        info: { title: 'API', version: '0.2' },
+        openapi: '3.0.0',
+        paths: {},
+        security: [{ oauth2: [] }],
+        servers: [{ url: 'https://myserver.com', variables: {} }],
+        tags: [],
+        securityDefs: {
+          oauth2: {
+            type: 'oauth2',
+            flows: {
+              implicit: {
+                authorizationUrl: 'https://example.com/api/oauth/dialog',
+                scopes: {
+                  'write:pets': 'modify pets in your account',
+                  'read:pets': 'read your pets'
+                }
+              }
+            }
+          }
+        },
+        baseUrl: 'https://myserver.com',
+        baseUrlVariables: {}
+      },
+      securitySet = [{ oauth2: [] }],
+      helperData = SchemaUtils.getAuthHelper(openAPISpec, securitySet);
+
+    expect(helperData.type).to.be.equal('oauth2');
+    expect(helperData).to.have.property('oauth2').with.lengthOf(3);
+    expect(helperData.oauth2[0]).to.be.an('object');
+    expect(helperData.oauth2[0].key).to.be.equal('scope');
+    expect(helperData.oauth2[0].value).to.be.equal('write:pets read:pets');
   });
 });

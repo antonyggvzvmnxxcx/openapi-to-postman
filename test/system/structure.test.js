@@ -22,7 +22,16 @@ const optionIds = [
     'ignoreUnresolvedVariables',
     'optimizeConversion',
     'strictRequestMatching',
-    'disableOptionalParameters'
+    'enableOptionalParameters',
+    'keepImplicitHeaders',
+    'includeWebhooks',
+    'allowUrlPathVarMatching',
+    'includeReferenceMap',
+    'includeDeprecated',
+    'parametersResolution',
+    'disabledParametersValidation',
+    'alwaysInheritAuthentication',
+    'preferredRequestBodyType'
   ],
   expectedOptions = {
     collapseFolders: {
@@ -30,7 +39,7 @@ const optionIds = [
       type: 'boolean',
       default: true,
       description: 'Importing will collapse all folders that have only one child element and lack ' +
-      'persistent folder-level data.'
+        'persistent folder-level data.'
     },
     requestParametersResolution: {
       name: 'Request parameter generation',
@@ -38,9 +47,9 @@ const optionIds = [
       default: 'Schema',
       availableOptions: ['Example', 'Schema'],
       description: 'Select whether to generate the request parameters based on the' +
-      ' [schema](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#schemaObject) or the' +
-      ' [example](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#exampleObject)' +
-      ' in the schema.'
+        ' [schema](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#schemaObject) or the' +
+        ' [example](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#exampleObject)' +
+        ' in the schema.'
     },
     exampleParametersResolution: {
       name: 'Response parameter generation',
@@ -48,9 +57,9 @@ const optionIds = [
       default: 'Example',
       availableOptions: ['Example', 'Schema'],
       description: 'Select whether to generate the response parameters based on the' +
-      ' [schema](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#schemaObject) or the' +
-      ' [example](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#exampleObject)' +
-      ' in the schema.'
+        ' [schema](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#schemaObject) or the' +
+        ' [example](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#exampleObject)' +
+        ' in the schema.'
     },
     folderStrategy: {
       name: 'Folder organization',
@@ -72,7 +81,7 @@ const optionIds = [
       type: 'enum',
       default: 'Space',
       availableOptions: ['Space', 'Tab'],
-      description: 'Option for setting indentation character'
+      description: 'Option for setting indentation character.'
     },
     requestNameSource: {
       name: 'Naming requests',
@@ -80,8 +89,8 @@ const optionIds = [
       default: 'Fallback',
       availableOptions: ['Url', 'Fallback'],
       description: 'Determines how the requests inside the generated collection will be named.' +
-      ' If “Fallback” is selected, the request will be named after one of the following schema' +
-      ' values: `description`, `operationid`, `url`.'
+        ' If “Fallback” is selected, the request will be named after one of the following schema' +
+        ' values: `summary`, `operationId`, `description`, `url`.'
     },
     schemaFaker: {
       name: 'Enable Schema Faking',
@@ -101,7 +110,7 @@ const optionIds = [
       name: 'Include auth info in example requests',
       type: 'boolean',
       default: true,
-      description: 'Select whether to include authentication parameters in the example request'
+      description: 'Select whether to include authentication parameters in the example request.'
     },
     shortValidationErrors: {
       name: 'Short error messages during request <> schema validation',
@@ -157,11 +166,83 @@ const optionIds = [
       description: 'Whether requests should be strictly matched with schema operations. Setting to true will not ' +
         'include any matches where the URL path segments don\'t match exactly.'
     },
-    disableOptionalParameters: {
-      name: 'Disable optional parameters',
+    enableOptionalParameters: {
+      name: 'Enable optional parameters',
+      type: 'boolean',
+      default: true,
+      description: 'Optional parameters aren\'t selected in the collection. ' +
+        'Once enabled they will be selected in the collection and request as well.'
+    },
+    keepImplicitHeaders: {
+      name: 'Keep implicit headers',
       type: 'boolean',
       default: false,
-      description: 'Whether to set optional parameters as disabled'
+      description: 'Whether to keep implicit headers from the OpenAPI specification, which are removed by default.',
+      external: true,
+      usage: ['CONVERSION']
+    },
+    allowUrlPathVarMatching: {
+      name: 'Allow matching of Path variables present in URL',
+      type: 'boolean',
+      default: false,
+      description: 'Whether to allow matching path variables that are available as part of URL itself ' +
+        'in the collection request'
+    },
+    includeReferenceMap: {
+      name: 'Include Reference map',
+      type: 'boolean',
+      default: false,
+      description: 'Whether or not to include reference map or not as part of output',
+      external: false,
+      usage: ['BUNDLE']
+    },
+    includeDeprecated: {
+      name: 'Include deprecated properties',
+      type: 'boolean',
+      default: true,
+      description: 'Select whether to include deprecated operations, parameters, and properties' +
+        ' in generated collection or not',
+      external: true,
+      usage: ['CONVERSION']
+    },
+    parametersResolution: {
+      name: 'Parameter generation',
+      type: 'enum',
+      default: 'Schema',
+      availableOptions: ['Example', 'Schema'],
+      description: 'Select whether to generate the request and response parameters based on the' +
+        ' [schema](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#schemaObject) or the' +
+        ' [example](https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md#exampleObject)' +
+        ' in the schema.',
+      external: true,
+      usage: ['CONVERSION']
+    },
+    disabledParametersValidation: {
+      name: 'Disabled Parameter validation',
+      type: 'boolean',
+      default: true,
+      description: 'Whether disabled parameters of collection should be validated',
+      external: false,
+      usage: ['VALIDATION']
+    },
+    alwaysInheritAuthentication: {
+      name: 'Always inherit authentication',
+      type: 'boolean',
+      default: false,
+      description: 'Whether authentication details should be included on every request, or always inherited from ' +
+        'the collection.',
+      external: true,
+      usage: ['CONVERSION']
+    }, preferredRequestBodyType: {
+      name: 'Select request body type',
+      type: 'enum',
+      default: 'first-listed',
+      availableOptions: ['x-www-form-urlencoded', 'form-data', 'raw', 'first-listed'],
+      description: 'When there are multiple content-types defined in the request body of OpenAPI, the conversion ' +
+        'selects the preferred option content-type as request body.If "first-listed" is set, the first ' +
+        'content-type defined in the OpenAPI spec will be selected.',
+      external: false,
+      usage: ['CONVERSION']
     }
   };
 
@@ -172,7 +253,7 @@ const optionIds = [
  * @returns {String} - markdown table consisting documetation for options
  */
 function generateOptionsDoc (options) {
-  var doc = 'id|type|available options|default|description|usage\n|---|---|---|---|---|---|\n';
+  var doc = 'id|type|available options|default|description|usage|version\n|---|---|---|---|---|---|---|\n';
 
   _.forEach(options, (option) => {
     var convertArrayToDoc = (array) => {
@@ -186,7 +267,8 @@ function generateOptionsDoc (options) {
     (_.isEmpty(defaultOption)) && (defaultOption = JSON.stringify(defaultOption));
 
     doc += `${option.id}|${option.type}|${convertArrayToDoc(option.availableOptions, true)}|` +
-      `${defaultOption}|${option.description}|${convertArrayToDoc(option.usage)}\n`;
+      `${defaultOption}|${option.description}|${convertArrayToDoc(option.usage)}|` +
+      `${convertArrayToDoc(option.supportedModuleVersion)}\n`;
   });
   return doc;
 }
@@ -240,7 +322,11 @@ describe('getOptions', function() {
 
 describe('OPTIONS.md', function() {
   it('must contain all details of options', function () {
-    const optionsDoc = fs.readFileSync('OPTIONS.md', 'utf-8');
-    expect(optionsDoc).to.eql(generateOptionsDoc(getOptions()));
+    const optionsDoc = fs.readFileSync('OPTIONS.md', 'utf-8'),
+      v1Options = getOptions(undefined, { moduleVersion: 'v1' }),
+      v2Options = getOptions(undefined, { moduleVersion: 'v2' }),
+      allOptions = _.uniqBy(_.concat(v1Options, v2Options), 'id');
+
+    expect(optionsDoc).to.eql(generateOptionsDoc(allOptions));
   });
 });

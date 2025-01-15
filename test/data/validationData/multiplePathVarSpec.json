@@ -45,6 +45,47 @@
           }
         }
       }
+    },
+    "/{petId}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "petId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            },
+            "example": 99.99
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/hello/{worldId}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "worldId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "world-92"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     }
   }
 }

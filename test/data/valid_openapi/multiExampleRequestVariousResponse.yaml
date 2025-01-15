@@ -1,0 +1,106 @@
+openapi: 3.0.0
+info:
+  title: None
+  version: 1.0.0
+  description: None
+paths:
+  /v1:
+    post:
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: "#/components/schemas/World"
+            examples:
+              valid-request:
+                value:
+                  includedFields:
+                    - user
+                    - height
+                    - weight
+              missing-required-parameter:
+                value:
+                  includedFields:
+                    - eyeColor
+      responses:
+        200:
+          description: None
+          content:
+            'application/json':
+              schema:
+                $ref: "#/components/schemas/Request"
+              examples:
+                valid-request:
+                  summary: Request with only required params
+                  value:
+                    {
+                      "user": 1
+                    }
+                not-matching-key:
+                  summary: Complete request
+                  value:
+                    {
+                      "user": 99,
+                      "height": 168,
+                      "weight": 44
+                    }
+        400:
+          description: None
+          content:
+            'application/json':
+              schema:
+                $ref: "#/components/schemas/Request"
+              examples:
+                missing-required-parameter:
+                  summary: Request with only bad params
+                  value:
+                    {
+                      "eyeColor": "gray"
+                    }
+        500:
+          description: None
+          content:
+            'application/json':
+              schema:
+                $ref: "#/components/schemas/Request"
+              examples:
+                not-matching-key-1:
+                  summary: Failed request - Negative user
+                  value:
+                    {
+                      "user": -99
+                    }
+                not-matching-key-2:
+                  summary: Failed request - All negatives
+                  value:
+                    {
+                      "user": -999,
+                      "height": -168,
+                      "weight": -44
+                    }
+
+components:
+  schemas:
+    World:
+      type: object
+      properties:
+        includedFields:
+          type: array
+    Request:
+      type: object
+      required:
+        - user
+        - height
+        - weight
+      properties:
+        user:
+          type: integer
+          description: None
+        height:
+          type: integer
+          description: None
+        weight:
+          type: integer
+          description: None
+        eyeColor:
+          type: string
